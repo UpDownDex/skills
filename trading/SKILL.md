@@ -1,3 +1,4 @@
+---
 name: updown
 description: >
 Execute perpetual contract trading on the Celo chain. Supports market orders, limit orders,
