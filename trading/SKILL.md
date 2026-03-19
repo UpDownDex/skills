@@ -4,7 +4,6 @@ description: >
 Execute perpetual contract trading on the Celo chain. Supports market orders, limit orders,
 stop-loss / take-profit orders, TWAP split orders, and adding/removing liquidity. Applicable
 to creating orders, querying positions, managing liquidity, and managing trading tasks.
-
 ---
 
 ## updown
