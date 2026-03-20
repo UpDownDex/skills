@@ -790,7 +790,7 @@ Create a BTC/USDT long market order with 10 USDT margin, 2x leverage
   "market": "0x...",
   "indexToken": "0x...",
   "isLong": true,
-  "orderType": 0,
+  "orderType": 2,
   "sizeDeltaUsdHuman": 20,
   "initialCollateralDeltaAmountHuman": 10,
   ...
