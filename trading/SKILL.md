@@ -616,7 +616,7 @@ After execution is complete, you can query positions to view the position status
   "indexToken": "0x57433eD8eC1FAD60b8E1dcFdD1fBD56aBA19C04C",
   "initialCollateralToken": "0xd96a1ac57a180a3819633bCE3dC602Bd8972f595",
   "isLong": true,
-  "orderType": 0,
+  "orderType": 2,
   "sizeDeltaUsdHuman": 100,
   "initialCollateralDeltaAmountHuman": 100
 }
@@ -630,7 +630,7 @@ After execution is complete, you can query positions to view the position status
   "indexToken": "0x57433eD8eC1FAD60b8E1dcFdD1fBD56aBA19C04C",
   "initialCollateralToken": "0xd96a1ac57a180a3819633bCE3dC602Bd8972f595",
   "isLong": true,
-  "orderType": 1,
+  "orderType": 3,
   "sizeDeltaUsdHuman": 100,
   "initialCollateralDeltaAmountHuman": 100,
   "triggerPriceHuman": 70000,
@@ -645,7 +645,7 @@ After execution is complete, you can query positions to view the position status
   "market": "0xDbBe49A7165F40C79D00bCD3B456AaE887c3d771",
   "indexToken": "0x57433eD8eC1FAD60b8E1dcFdD1fBD56aBA19C04C",
   "isLong": true,
-  "orderType": 5,
+  "orderType": 6,
   "closePercent": 100,
   "triggerPriceHuman": 65000,
   "acceptablePriceHuman": 64500
@@ -659,7 +659,7 @@ After execution is complete, you can query positions to view the position status
   "market": "0xDbBe49A7165F40C79D00bCD3B456AaE887c3d771",
   "indexToken": "0x57433eD8eC1FAD60b8E1dcFdD1fBD56aBA19C04C",
   "isLong": true,
-  "orderType": 6,
+  "orderType": 5,
   "closePercent": 100,
   "triggerPriceHuman": 80000,
   "acceptablePriceHuman": 79500
