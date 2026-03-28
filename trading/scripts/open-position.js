@@ -575,7 +575,7 @@ async function main() {
     decreasePositionSwapType: 0,
     isLong,
     shouldUnwrapNativeToken: Boolean(cfg.shouldUnwrapNativeToken),
-    autoCancel: Boolean(cfg.autoCancel),
+    autoCancel: Boolean(cfg.autoCancel ?? true),
     referralCode: cfg.referralCode || ethers.constants.HashZero,
   };
 

@@ -89,7 +89,9 @@ function printCreateOrderParams() {
   console.log('  - decreasePositionSwapType:   decrease swap type (default: 0)')
   console.log('  - isLong:                     long or short (true/false, required)')
   console.log('  - shouldUnwrapNativeToken:    unwrap native token (default: false)')
-  console.log('  - autoCancel:                 auto cancel (default: false)')
+  console.log(
+    '  - autoCancel:                 auto cancel (default: true if omitted in open / close / TWAP scripts)',
+  )
   console.log('  - referralCode:               referral code (default: 0x0)')
   console.log('')
 }
