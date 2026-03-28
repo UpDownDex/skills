@@ -167,9 +167,26 @@ function parseUserInput(input) {
   }
 
   // Detect close actions
-  if (
-    inputLower.includes('close')
-  ) {
+  if (inputLower.includes('twap')) {
+    // TWAP split: decide open/close based on close-related keywords
+    if (inputLower.includes('close')) {
+      result.action = 'close'
+    } else {
+      result.action = 'open'
+    }
+    result.orderType = 'twap'
+
+    // Parse TWAP parameters (for configs only, not real submission)
+    const twapPartsMatch = input.match(/(\d+)\s*(?:parts?|orders?)/i)
+    if (twapPartsMatch) {
+      result.twapParts = parseInt(twapPartsMatch[1])
+    }
+
+    const twapIntervalMatch = input.match(/(\d+)\s*(?:minutes?|mins?)/i)
+    if (twapIntervalMatch) {
+      result.twapInterval = parseInt(twapIntervalMatch[1]) * 60 // convert to seconds
+    }
+  } else if (inputLower.includes('close')) {
     result.action = 'close'
 
     // Detect close order type
@@ -198,7 +215,10 @@ function parseUserInput(input) {
     if (triggerPriceMatch) {
       result.triggerPrice = parseFloat(triggerPriceMatch[1])
     }
-  } else if (inputLower.includes('stop-loss') || inputLower.includes('stop loss')) {
+  } else if (
+    inputLower.includes('stop-loss') ||
+    inputLower.includes('stop loss')
+  ) {
     result.action = 'stopLoss'
     result.orderType = 'stopLoss'
 
@@ -237,9 +257,7 @@ function parseUserInput(input) {
     }
   } else if (inputLower.includes('twap')) {
     // TWAP split: decide open/close based on close-related keywords
-    if (
-      inputLower.includes('close')
-    ) {
+    if (inputLower.includes('close')) {
       result.action = 'close'
     } else {
       result.action = 'open'
@@ -285,15 +303,9 @@ function parseUserInput(input) {
   }
 
   // Detect direction
-  if (
-    inputLower.includes('long') ||
-    inputLower.includes('buy')
-  ) {
+  if (inputLower.includes('long') || inputLower.includes('buy')) {
     result.isLong = true
-  } else if (
-    inputLower.includes('short') ||
-    inputLower.includes('sell')
-  ) {
+  } else if (inputLower.includes('short') || inputLower.includes('sell')) {
     result.isLong = false
   }
 
@@ -327,9 +339,7 @@ function parseUserInput(input) {
   }
 
   // Detect trigger price
-  const priceMatch = input.match(
-    /(?:trigger|price)\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
-  )
+  const priceMatch = input.match(/(?:trigger|price)\s*[:=]?\s*(\d+(?:\.\d+)?)/i)
   if (priceMatch) {
     result.triggerPrice = parseFloat(priceMatch[1])
   }
@@ -721,7 +731,23 @@ async function main() {
     console.log('❌ Invalid input:')
     errors.forEach((e) => console.log(`  - ${e}`))
     console.log('')
-    console.log('💡 Hint: You can place orders like:')
+    console.log(
+      '💡 Hint: Typical user flow (wrap collateral first, then open a position)',
+    )
+    console.log(
+      '  1. Fund the right tokens on Celo. The protocol expects platform "wrap" collateral (e.g. wUSDT, wBTC).',
+    )
+    console.log(
+      '  2. Celo has native USDT and platform USDT. Updown uses the platform USDT (0xd96a...).',
+    )
+    console.log(
+      '  3. If you lack platform wrap USDT, acquire it by Bridgers swap / bridge or same-chain swap on Celo.',
+    )
+    console.log(
+      '  (Do not open a trade until your balances are in the wrap tokens)',
+    )
+    console.log('')
+    console.log('You can place orders like:')
     console.log(
       '  "Create a BTC/USDT long market order with 10 USDT margin, 2x leverage"',
     )

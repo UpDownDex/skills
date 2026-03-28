@@ -1,5 +1,14 @@
 # Omni Bridgers related config files (Chains, Tokens & API)
 
+## Updown wrap tokens and cross-chain funding
+
+Trading on the **Updown** platform uses the system’s **wrap tokens** on Celo as collateral and settlement assets (for example wrapped USDT, BTC, ETH, and other markets). Those tokens are **not** arbitrary user-chosen ERC-20s: you must use the addresses and decimals the platform defines.
+
+- **Source of truth**: [`assets/celo-tokens.json`](../assets/celo-tokens.json) lists each market’s wrap token (`symbol`, contract `address`, `decimals`, and a short `description` of how it is used on Updown).
+- **Getting wrap tokens**: Users often start with assets on **other chains**. They can **swap or bridge** (deposit) via Bridgers-compatible routes—using the chain and token metadata in this doc and in `omni-bridgers-tokens.json` / `scripts/bridgers-swap.js`—to receive the correct Celo wrap tokens, then use those balances for Updown perpetual trading and related operations.
+
+## Omni Bridgers swap
+
 To make it easy to reuse the chain and token information needed by the frontend `bridgersFetcher` in pure script environments, this repo adds Omni Bridgers related config files under `assets/`. They can serve as the single source of truth for backend or ops scripts:
 
 - `assets/omni-bridgers-tokens.json`
