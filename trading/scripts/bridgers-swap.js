@@ -170,7 +170,7 @@ function getProviderAndWallet(chainName, privateKey) {
   const config = loadChainConfig(chainName)
   const rpcUrl = config.rpcUrls[0]
   const provider = new ethers.providers.JsonRpcProvider(rpcUrl)
-  let wallet;
+  let wallet
   if (privateKey) {
     wallet = new ethers.Wallet(privateKey, provider)
   } else {
@@ -211,27 +211,35 @@ async function fetchSwapCall(params) {
   return response.json()
 }
 
-
 // Upload transaction hash to Bridgers (updateDataAndStatus)
 async function updateDataAndStatus(params) {
-  const response = await fetch(buildUrl(BRIDGERS_API_BASE, '/api/exchangeRecord/updateDataAndStatus'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    buildUrl(BRIDGERS_API_BASE, '/api/exchangeRecord/updateDataAndStatus'),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
     },
-    body: JSON.stringify(params),
-  })
+  )
   return response.json()
 }
 
 // Query transaction history (fetchTransData)
 async function fetchTransData(account) {
-  const response = await fetch(buildUrl(BRIDGERS_API_BASE, '/api/exchangeRecord/getTransData?userAddr=' + account), {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    }
-  })
+  const response = await fetch(
+    buildUrl(
+      BRIDGERS_API_BASE,
+      '/api/exchangeRecord/getTransData?userAddr=' + account,
+    ),
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    },
+  )
   return response.json()
 }
 
@@ -250,8 +258,16 @@ Commands:
   quote      Get swap quote
   swap       Execute swap
 
+Celo USDT (Two tokens on the same chain):
+  - USDT:  bridged USDT used as Updown USDT or wUSDT for updown trading system.
+    Address: 0xd96a1ac57a180a3819633bCE3dC602Bd8972f595
+  - USDT(Native): Celo-native USDT.
+    Address: 0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e
+  Use the correct symbol or address when quoting or swapping so the route matches the token you intend.
+
 Examples:
-  # Get quote (Arbitrum USDT -> Celo USDT)
+  # 1. Cross-chain: Arbitrum USDT -> Celo platform USDT (Arbitrum USDT -> Celo USDT)
+   ## Get quote (Arbitrum USDT -> Celo USDT)
   node scripts/bridgers-swap.js quote \\
     --from arbitrum \\
     --to celo \\
@@ -260,11 +276,31 @@ Examples:
     --amount 5 \\
     --privateKey <privateKey>
 
-  # Execute swap
+  ## Execute swap
   node scripts/bridgers-swap.js swap \\
     --from arbitrum \\
     --to celo \\
     --fromToken USDT \\
+    --toToken USDT \\
+    --amount 5 \\
+    --slippage 0.5 \\
+    --privateKey <privateKey>
+
+  # 2. Same chain on Celo: native USDT -> platform USDT (Celo USDT(Native) -> Celo USDT)
+   ## Get quote (Celo USDT(Native) -> Celo USDT)
+  node scripts/bridgers-swap.js quote \\
+    --from celo \\
+    --to celo \\
+    --fromToken USDT(Native) \\
+    --toToken USDT \\
+    --amount 5 \\
+    --privateKey <privateKey>
+
+   ## Execute swap
+  node scripts/bridgers-swap.js swap \\
+    --from celo \\
+    --to celo \\
+    --fromToken USDT(Native) \\
     --toToken USDT \\
     --amount 5 \\
     --slippage 0.5 \\
@@ -293,7 +329,9 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
 
   if (!fromChain || !toChain || !fromToken || !toToken || !amount) {
     console.error('❌ Error: missing required parameters')
-    console.error('Please provide: --from, --to, --fromToken, --toToken, --amount')
+    console.error(
+      'Please provide: --from, --to, --fromToken, --toToken, --amount',
+    )
     return
   }
 
@@ -359,70 +397,87 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
 
     console.log(`\n📤 From address: ${wallet.address}`)
     console.log(`📥 To address:   ${wallet.address}`)
-    console.log(`   ⚠️  Cross-chain transfer will send funds to this address, please double-check!`)
+    console.log(
+      `   ⚠️  Cross-chain transfer will send funds to this address, please double-check!`,
+    )
 
     // Build quote params
-    const fromTokenAmountRaw = ethers.utils.parseUnits(amount, fromTokenInfo.decimals).toString();
+    const fromTokenAmountRaw = ethers.utils
+      .parseUnits(amount, fromTokenInfo.decimals)
+      .toString()
 
     const quoteParams = {
       equipmentNo: wallet.address,
-      sourceType: "H5",
-      userNo: "",
-      sessionUuid: "",
-      orderId: "",
-      sourceFlag: "perpex01",
-      utmSource: "",
+      sourceType: 'H5',
+      userNo: '',
+      sessionUuid: '',
+      orderId: '',
+      sourceFlag: 'perpex01',
+      utmSource: '',
       fromTokenAddress: fromTokenInfo.address,
       toTokenAddress: toTokenInfo?.address || fromTokenInfo.address,
       fromTokenAmount: fromTokenAmountRaw,
       fromTokenChain: CHAIN_NAMES[fromChain.toLowerCase()],
       toTokenChain: CHAIN_NAMES[toChain.toLowerCase()],
       userAddr: wallet.address,
-      source: ""
-    };
+      source: '',
+    }
 
-    console.log("\nRequest params (fetchQuote):");
-    console.log(JSON.stringify(quoteParams, null, 2));
-    console.log("");
+    console.log('\nRequest params (fetchQuote):')
+    console.log(JSON.stringify(quoteParams, null, 2))
+    console.log('')
 
-    let quoteResult;
+    let quoteResult
     try {
-      quoteResult = await fetchQuote(quoteParams);
-      console.log("\n=== Full API response ===\n");
-      console.log(JSON.stringify(quoteResult, null, 2));
-      console.log("\n=== Parsed quote result ===\n");
+      quoteResult = await fetchQuote(quoteParams)
+      console.log('\n=== Full API response ===\n')
+      console.log(JSON.stringify(quoteResult, null, 2))
+      console.log('\n=== Parsed quote result ===\n')
 
-      if (quoteResult.resCode === 100 && quoteResult.data && quoteResult.data.txData) {
-        const txData = quoteResult.data.txData;
-        
-        console.log("✅ Quote fetched successfully!\n");
-        console.log("📊 Basic info:");
-        console.log("  resCode:", quoteResult.resCode);
-        console.log("  resMsg: ", quoteResult.resMsg);
-        console.log("");
-        
-        console.log("💱 Token info:");
-        console.log("  From token address:", txData.fromTokenAddress || fromTokenInfo.address);
+      if (
+        quoteResult.resCode === 100 &&
+        quoteResult.data &&
+        quoteResult.data.txData
+      ) {
+        const txData = quoteResult.data.txData
+
+        console.log('✅ Quote fetched successfully!\n')
+        console.log('📊 Basic info:')
+        console.log('  resCode:', quoteResult.resCode)
+        console.log('  resMsg: ', quoteResult.resMsg)
+        console.log('')
+
+        console.log('💱 Token info:')
         console.log(
-          "  From token amount:",
-          ethers.utils.formatUnits(txData.fromTokenAmount, txData.fromTokenDecimal),
+          '  From token address:',
+          txData.fromTokenAddress || fromTokenInfo.address,
+        )
+        console.log(
+          '  From token amount:',
+          ethers.utils.formatUnits(
+            txData.fromTokenAmount,
+            txData.fromTokenDecimal,
+          ),
           fromTokenInfo.symbol,
-        );
-        console.log("  From token decimals:", txData.fromTokenDecimal);
-        console.log("  To token address:", txData.toTokenAddress || toTokenInfo?.address);
+        )
+        console.log('  From token decimals:', txData.fromTokenDecimal)
         console.log(
-          "  To token amount:",
+          '  To token address:',
+          txData.toTokenAddress || toTokenInfo?.address,
+        )
+        console.log(
+          '  To token amount:',
           txData.toTokenAmount,
           toTokenInfo?.symbol || fromTokenInfo.symbol,
-        );
-        console.log("  To token decimals:", txData.toTokenDecimal);
-        console.log("");
-        
-        console.log("💰 Fee info:");
-        console.log("  Rate:", txData.instantRate);
-        console.log("  Fee rate:", txData.fee * 100, "%");
+        )
+        console.log('  To token decimals:', txData.toTokenDecimal)
+        console.log('')
+
+        console.log('💰 Fee info:')
+        console.log('  Rate:', txData.instantRate)
+        console.log('  Fee rate:', txData.fee * 100, '%')
         console.log(
-          "  Fee amount:",
+          '  Fee amount:',
           (
             parseFloat(
               ethers.utils.formatUnits(
@@ -432,10 +487,10 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
             ) * txData.fee
           ).toFixed(6),
           fromTokenInfo.symbol,
-        );
-        console.log("  On-chain fee:", txData.chainFee, fromTokenInfo.symbol);
+        )
+        console.log('  On-chain fee:', txData.chainFee, fromTokenInfo.symbol)
         console.log(
-          "  Total fee:",
+          '  Total fee:',
           (
             parseFloat(txData.chainFee) +
             parseFloat(
@@ -447,49 +502,53 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
               txData.fee
           ).toFixed(6),
           fromTokenInfo.symbol,
-        );
-        console.log("");
-        
-        console.log("⏱️  Limits:");
-        console.log("  Estimated time:", txData.estimatedTime, "minutes");
-        console.log("  Min deposit:", txData.depositMin, fromTokenInfo.symbol);
-        console.log("  Max deposit:", txData.depositMax, fromTokenInfo.symbol);
+        )
+        console.log('')
+
+        console.log('⏱️  Limits:')
+        console.log('  Estimated time:', txData.estimatedTime, 'minutes')
+        console.log('  Min deposit:', txData.depositMin, fromTokenInfo.symbol)
+        console.log('  Max deposit:', txData.depositMax, fromTokenInfo.symbol)
         console.log(
-          "  Min output:",
+          '  Min output:',
           ethers.utils.formatUnits(txData.amountOutMin, txData.toTokenDecimal),
           toTokenInfo?.symbol || fromTokenInfo.symbol,
-        );
-        console.log("");
-        
-        console.log("🔧 Technical info:");
-        console.log("  DEX:", txData.dex);
-        console.log("  Contract address:", txData.contractAddress);
-        console.log("  Logo:", txData.logoUrl);
-        console.log("  Route:", txData.path || "[]");
-        console.log("");
-        
-        console.log("💡 Tips:");
-        console.log("  Actual received amount may vary due to market volatility");
-        console.log("  Ensure enough balance for amount and on-chain fees on source chain");
+        )
+        console.log('')
+
+        console.log('🔧 Technical info:')
+        console.log('  DEX:', txData.dex)
+        console.log('  Contract address:', txData.contractAddress)
+        console.log('  Logo:', txData.logoUrl)
+        console.log('  Route:', txData.path || '[]')
+        console.log('')
+
+        console.log('💡 Tips:')
         console.log(
-          "  Suggested approve amount:",
+          '  Actual received amount may vary due to market volatility',
+        )
+        console.log(
+          '  Ensure enough balance for amount and on-chain fees on source chain',
+        )
+        console.log(
+          '  Suggested approve amount:',
           ethers.utils.formatUnits(
             txData.fromTokenAmount,
             txData.fromTokenDecimal,
           ),
           fromTokenInfo.symbol,
-        );
-        console.log("");
+        )
+        console.log('')
       } else {
-        console.log("❌ Quote failed:");
-        console.log("  resCode:", quoteResult.resCode);
-        console.log("  resMsg: ", quoteResult.resMsg);
-        throw new Error("Quote failed: " + quoteResult.resMsg);
+        console.log('❌ Quote failed:')
+        console.log('  resCode:', quoteResult.resCode)
+        console.log('  resMsg: ', quoteResult.resMsg)
+        throw new Error('Quote failed: ' + quoteResult.resMsg)
       }
     } catch (e) {
-      console.error("❌ Error while fetching quote:", e.message);
-      if (command === 'swap') throw e;
-      return;
+      console.error('❌ Error while fetching quote:', e.message)
+      if (command === 'swap') throw e
+      return
     }
 
     if (command === 'quote') {
@@ -594,7 +653,6 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
     console.log(`   Block: ${receipt.blockNumber}`)
     console.log(`   Gas used: ${receipt.gasUsed.toString()}`)
 
-
     console.log(`\n🎉 Cross-chain swap submitted!`)
     console.log(
       `   Estimated arrival time: ${quoteResult.data.txData.estimatedTime} minutes`,
@@ -614,21 +672,22 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
       amountOutMin: swapParams.amountOutMin,
       fromCoinCode: swapParams.fromCoinCode,
       toCoinCode: swapParams.toCoinCode,
-      sourceFlag: "perpex01"
-    }
-    
-    console.log(`\n➡️ Uploading tx hash to Bridgers backend... (updateDataAndStatus)`);
-    try {
-      const updateResult = await updateDataAndStatus(updateParams);
-      if (updateResult.resCode === 100) {
-        console.log(`✅ Tx hash successfully synced to Bridgers backend!`);
-      } else {
-        console.log(`⚠️ Tx hash sync failed: ${updateResult.resMsg}`);
-      }
-    } catch (e) {
-      console.error(`❌ Error calling updateDataAndStatus:`, e.message);
+      sourceFlag: 'perpex01',
     }
 
+    console.log(
+      `\n➡️ Uploading tx hash to Bridgers backend... (updateDataAndStatus)`,
+    )
+    try {
+      const updateResult = await updateDataAndStatus(updateParams)
+      if (updateResult.resCode === 100) {
+        console.log(`✅ Tx hash successfully synced to Bridgers backend!`)
+      } else {
+        console.log(`⚠️ Tx hash sync failed: ${updateResult.resMsg}`)
+      }
+    } catch (e) {
+      console.error(`❌ Error calling updateDataAndStatus:`, e.message)
+    }
   } catch (error) {
     console.error(`\n❌ Error:`, error.message)
     process.exit(1)

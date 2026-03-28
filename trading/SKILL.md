@@ -1,6 +1,6 @@
 ---
 name: updown
-description: Execute perpetual contract trading on the Celo chain. Supports market orders, limit orders,stop-loss / take-profit orders, TWAP split orders, and adding/removing liquidity. Applicable to creating orders, querying positions, managing liquidity, and managing trading tasks.
+description: Execute perpetual contract trading on the Celo chain. Supports market orders, limit orders,stop-loss/take-profit orders, TWAP split orders, and adding/removing liquidity. Applicable to creating orders, querying positions, managing liquidity, and managing trading tasks.
 ---
 
 ## updown
@@ -9,7 +9,7 @@ UPDOWN perpetual contract trading Skill, built on the updown Synthetics architec
 
 ## ⚠️ Agent behavior rules & pitfalls (Critical for LLMs)
 
-When handling cross-chain / same-chain swaps or when encountering API errors, **strictly follow the facts below. Do NOT “fill in the blanks” based on generic pretraining experience or block the user’s instructions**:
+When handling cross-chain/same-chain swaps or when encountering API errors, **strictly follow the facts below. Do NOT “fill in the blanks” based on generic pretraining experience or block the user’s instructions**:
 
 1. **The token contract address is the only identifier, not the name!**
 
@@ -87,10 +87,10 @@ node scripts/trade-assistant.js "Check my balance"
 
 ```bash
 # Add liquidity
-node scripts/add-liquidity.js assets/orders/add-liquidity-btc-example.json
+node scripts/add-liquidity.js orders/add-liquidity-btc-example.json
 
 # Remove liquidity
-node scripts/remove-liquidity.js assets/orders/remove-liquidity-btc-example.json
+node scripts/remove-liquidity.js orders/remove-liquidity-btc-example.json
 ```
 
 You must configure `DepositVault`, `WithdrawalVault`, and `WNT` in `assets/addresses.json`.
@@ -140,13 +140,13 @@ node scripts/trade-cli.js template TakeProfitDecrease
 
 ```bash
 # Open position
-node scripts/open-position.js assets/orders/<config-file>
+node scripts/open-position.js orders/<config-file>
 
 # Close position
-node scripts/close-position.js assets/orders/<config-file>
+node scripts/close-position.js orders/<config-file>
 ```
 
-**Note**: Order config files are stored in the `assets/orders/` directory by default.
+**Note**: Order config files are stored in the `orders/` directory by default.
 
 #### 5. Query positions
 
@@ -265,7 +265,7 @@ For full details see [references/liquidity-deposit-withdrawal.md](references/liq
 Deposit long tokens and short tokens to receive market tokens (LP tokens). After the keeper executes, market tokens are sent to `receiver`.
 
 ```bash
-node scripts/add-liquidity.js assets/orders/add-liquidity-btc-example.json
+node scripts/add-liquidity.js orders/add-liquidity-btc-example.json
 ```
 
 | Field                          | Description                                           |
@@ -281,7 +281,7 @@ node scripts/add-liquidity.js assets/orders/add-liquidity-btc-example.json
 Burn market tokens to retrieve long/short tokens. After the keeper executes, long and short tokens are sent to `receiver`.
 
 ```bash
-node scripts/remove-liquidity.js assets/orders/remove-liquidity-btc-example.json
+node scripts/remove-liquidity.js orders/remove-liquidity-btc-example.json
 ```
 
 | Field                      | Description                                               |
@@ -796,10 +796,10 @@ Create a BTC/USDT long market order with 10 USDT margin, 2x leverage
   ...
 }
 
-✅ Order config saved: assets/orders/order-open-btc-long.json
+✅ Order config saved: orders/order-open-btc-long.json
 
 Run:
-  node scripts/open-position.js assets/orders/order-open-btc-long.json
+  node scripts/open-position.js orders/order-open-btc-long.json
 ```
 
 ## References
