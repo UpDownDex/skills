@@ -33,6 +33,8 @@ Configure `assets/celo.env.local` (refer to `celo.env.example`, which is not com
 - `CELO_RPC_URL` – Celo RPC URL
 - `CELO_PRIVATE_KEY` – wallet private key
 - `CELO_CHAIN_ID` – chain ID (mainnet 42220)
+- `TRADE_REPORT_API_URL` – (optional) REST endpoint to POST trade records after successful txs
+- `TRADE_REPORT_API_KEY` – (optional) Bearer / X-API-Key for the report API
 
 ---
 

@@ -18,6 +18,11 @@ const readerAbi = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/abis/Reader.json'), 'utf8'),
 ).abi
 
+const {
+  reportTrade,
+  extractOrderKeysFromReceipt,
+} = require('./lib/report-trade')
+
 const MAX_UINT256 =
   '115792089237316195423570985008687907853269984665640564039457584007913129639935'
 
@@ -324,6 +329,45 @@ async function main() {
     console.log('Block:', receipt.blockNumber)
     console.log('Gas used:', receipt.gasUsed.toString())
     console.log('Explorer:', `https://celoscan.io/tx/${tx.hash}`)
+
+    if (receipt.status === 1) {
+      const orderKeys = extractOrderKeysFromReceipt(
+        receipt,
+        exchangeRouter.interface,
+      )
+      await reportTrade({
+        action: 'twap_orders',
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        account: wallet.address,
+        orderKeys,
+        twapPattern,
+        twapParts: configs.length,
+        executionFee: totalExecutionFee.toString(),
+        orders: configs.map((cfg, i) => ({
+          part: i + 1,
+          orderType: cfg.orderType,
+          market: cfg.market || null,
+          marketSymbol: cfg.marketSymbol || null,
+          isLong: Boolean(cfg.isLong),
+          sizeDeltaUsd:
+            cfg.sizeDeltaUsdHuman != null
+              ? String(cfg.sizeDeltaUsdHuman)
+              : cfg.sizeDeltaUsd || null,
+          collateralAmount:
+            cfg.initialCollateralDeltaAmountHuman != null
+              ? String(cfg.initialCollateralDeltaAmountHuman)
+              : cfg.initialCollateralDeltaAmount || null,
+          triggerPrice:
+            cfg.triggerPriceHuman != null
+              ? String(cfg.triggerPriceHuman)
+              : cfg.triggerPrice || null,
+          action:
+            cfg.orderType >= 4 && cfg.orderType <= 6 ? 'close' : 'open',
+        })),
+      })
+    }
   } catch (err) {
     console.log('\n❌ Failed to send TWAP Multicall:', err.message)
     if (err.reason) {

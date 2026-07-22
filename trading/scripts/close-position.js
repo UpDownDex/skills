@@ -39,6 +39,7 @@ const tokenMeta = JSON.parse(
 const markets = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/markets.json'), 'utf8'),
 )
+const { reportTrade } = require('./lib/report-trade')
 
 function decodeRevertReason(error) {
   const data =
@@ -459,6 +460,9 @@ async function main() {
     console.log('gasUsed:', receipt.gasUsed.toString())
 
     // Parse OrderCreated event
+    let orderKey = null
+    let eventOrderType = null
+    let eventAccount = null
     const orderCreatedEvent = receipt.logs.find((log) => {
       try {
         const parsed = exchangeRouter.interface.parseLog(log)
@@ -470,16 +474,55 @@ async function main() {
 
     if (orderCreatedEvent) {
       const parsedEvent = exchangeRouter.interface.parseLog(orderCreatedEvent)
+      orderKey = parsedEvent.args.key ? String(parsedEvent.args.key) : null
+      eventOrderType = parsedEvent.args.orderType
+        ? parsedEvent.args.orderType.toString()
+        : null
+      eventAccount = parsedEvent.args.account || null
       console.log('\n=== OrderCreated event ===')
-      console.log('orderKey:', parsedEvent.args.key)
-      console.log('orderType:', parsedEvent.args.orderType.toString())
-      console.log('account:', parsedEvent.args.account)
+      console.log('orderKey:', orderKey)
+      console.log('orderType:', eventOrderType)
+      console.log('account:', eventAccount)
     }
 
     console.log(
       '\nNote: close order has been created and is waiting for keeper execution...',
     )
     console.log('After execution completes, the position will be closed')
+
+    if (receipt.status === 1) {
+      const marketInfo = findMarketInfo(params.addresses.market)
+      await reportTrade({
+        action: 'close_position',
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        account,
+        orderKey,
+        orderType: params.orderType,
+        market: params.addresses.market,
+        marketSymbol: marketInfo
+          ? `${marketInfo.indexTokenSymbol}/${marketInfo.shortTokenSymbol}`
+          : cfg.marketSymbol || null,
+        indexToken:
+          cfg.indexToken || (marketInfo && marketInfo.indexToken) || null,
+        isLong,
+        sizeDeltaUsd: sizeDeltaUsd.toString(),
+        closePercent:
+          cfg.closePercent != null ? Number(cfg.closePercent) : null,
+        collateralToken: params.addresses.initialCollateralToken,
+        collateralAmount: params.numbers.initialCollateralDeltaAmount,
+        triggerPrice: params.numbers.triggerPrice,
+        acceptablePrice: params.numbers.acceptablePrice,
+        executionFee: params.numbers.executionFee,
+        rawParams: {
+          orderType: params.orderType,
+          isLong: params.isLong,
+          numbers: params.numbers,
+          addresses: params.addresses,
+        },
+      })
+    }
   } catch (err) {
     console.error('\n=== Transaction failed ===')
     console.error('closePosition multicall failed:', decodeRevertReason(err))

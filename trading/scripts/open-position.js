@@ -36,6 +36,7 @@ const chainlinkAbi = JSON.parse(
 const tokenMeta = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../assets/celo-tokens.json"), "utf8")
 );
+const { reportTrade } = require("./lib/report-trade");
 
 function decodeRevertReason(error) {
   const data =
@@ -621,6 +622,9 @@ async function main() {
     console.log("gasUsed:", receipt.gasUsed.toString());
     
     // Parse OrderCreated event
+    let orderKey = null;
+    let eventOrderType = null;
+    let eventAccount = null;
     const orderCreatedEvent = receipt.logs.find(log => {
       try {
         const parsed = exchangeRouter.interface.parseLog(log);
@@ -630,14 +634,57 @@ async function main() {
     
     if (orderCreatedEvent) {
       const parsedEvent = exchangeRouter.interface.parseLog(orderCreatedEvent);
+      orderKey = parsedEvent.args.key ? String(parsedEvent.args.key) : null;
+      eventOrderType = parsedEvent.args.orderType
+        ? parsedEvent.args.orderType.toString()
+        : null;
+      eventAccount = parsedEvent.args.account || null;
       console.log("\n=== OrderCreated event ===");
-      console.log("orderKey:", parsedEvent.args.key);
-      console.log("orderType:", parsedEvent.args.orderType.toString());
-      console.log("account:", parsedEvent.args.account);
+      console.log("orderKey:", orderKey);
+      console.log("orderType:", eventOrderType);
+      console.log("account:", eventAccount);
     }
     
     console.log("\nNote: order has been created and is waiting for keeper execution...");
     console.log("After execution completes, you can query positions to check position status");
+
+    if (receipt.status === 1) {
+      const marketInfo = findMarketInfo(cfg.market);
+      await reportTrade({
+        action: "open_position",
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        account,
+        orderKey,
+        orderType: params.orderType,
+        market: cfg.market,
+        marketSymbol: marketInfo
+          ? `${marketInfo.indexTokenSymbol}/${marketInfo.shortTokenSymbol}`
+          : cfg.marketSymbol || null,
+        indexToken: cfg.indexToken || (marketInfo && marketInfo.indexToken) || null,
+        isLong,
+        sizeDeltaUsd:
+          cfg.sizeDeltaUsdHuman != null
+            ? String(cfg.sizeDeltaUsdHuman)
+            : params.numbers.sizeDeltaUsd,
+        collateralToken: params.addresses.initialCollateralToken,
+        collateralAmount:
+          cfg.initialCollateralDeltaAmountHuman != null
+            ? String(cfg.initialCollateralDeltaAmountHuman)
+            : params.numbers.initialCollateralDeltaAmount,
+        triggerPrice: params.numbers.triggerPrice,
+        acceptablePrice: params.numbers.acceptablePrice,
+        executionFee: params.numbers.executionFee,
+        swapPath: params.addresses.swapPath || [],
+        rawParams: {
+          orderType: params.orderType,
+          isLong: params.isLong,
+          numbers: params.numbers,
+          addresses: params.addresses,
+        },
+      });
+    }
     
   } catch (err) {
     console.error("\n=== Transaction failed ===");
