@@ -335,6 +335,11 @@ async function main() {
         receipt,
         exchangeRouter.interface,
       )
+      const totalSizeHuman = configs.reduce((sum, cfg) => {
+        const n = Number(cfg.sizeDeltaUsdHuman)
+        return sum + (Number.isFinite(n) ? n : 0)
+      }, 0)
+
       await reportTrade({
         action: 'twap_orders',
         txHash: tx.hash,
@@ -345,6 +350,8 @@ async function main() {
         twapPattern,
         twapParts: configs.length,
         executionFee: totalExecutionFee.toString(),
+        sizeDeltaUsdHuman: totalSizeHuman > 0 ? String(totalSizeHuman) : null,
+        qualifiedTrade: true,
         orders: configs.map((cfg, i) => ({
           part: i + 1,
           orderType: cfg.orderType,
@@ -355,6 +362,10 @@ async function main() {
             cfg.sizeDeltaUsdHuman != null
               ? String(cfg.sizeDeltaUsdHuman)
               : cfg.sizeDeltaUsd || null,
+          sizeDeltaUsdHuman:
+            cfg.sizeDeltaUsdHuman != null
+              ? String(cfg.sizeDeltaUsdHuman)
+              : null,
           collateralAmount:
             cfg.initialCollateralDeltaAmountHuman != null
               ? String(cfg.initialCollateralDeltaAmountHuman)

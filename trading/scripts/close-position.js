@@ -492,13 +492,44 @@ async function main() {
 
     if (receipt.status === 1) {
       const marketInfo = findMarketInfo(params.addresses.market)
+      const orderTypeNum = Number(params.orderType)
+      const isStopLoss = orderTypeNum === 6
+      const isTakeProfit = orderTypeNum === 5
+      const sizeDeltaUsdHuman =
+        cfg.sizeDeltaUsdHuman != null
+          ? String(cfg.sizeDeltaUsdHuman)
+          : closePercent != null
+            ? null
+            : null
+      const bothSlTp =
+        Boolean(cfg.setSlTp) ||
+        (cfg.stopLossOrderKey && cfg.takeProfitOrderKey) ||
+        (cfg.hasStopLoss && cfg.hasTakeProfit)
+
+      const positionKey =
+        cfg.positionKey ||
+        (target && (target.key || target.positionKey)) ||
+        null
+      const slTpGroupId =
+        cfg.slTpGroupId ||
+        (bothSlTp && tx.hash ? `sltp-${tx.hash}` : null)
+
       await reportTrade({
-        action: 'close_position',
+        action: bothSlTp ? 'set_sl_tp' : 'close_position',
         txHash: tx.hash,
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed.toString(),
         account,
         orderKey,
+        positionKey,
+        slTpGroupId,
+        hasStopLoss: bothSlTp ? true : isStopLoss || Boolean(cfg.hasStopLoss),
+        hasTakeProfit:
+          bothSlTp ? true : isTakeProfit || Boolean(cfg.hasTakeProfit),
+        stopLossOrderKey:
+          cfg.stopLossOrderKey || (isStopLoss ? orderKey : null),
+        takeProfitOrderKey:
+          cfg.takeProfitOrderKey || (isTakeProfit ? orderKey : null),
         orderType: params.orderType,
         market: params.addresses.market,
         marketSymbol: marketInfo
@@ -508,6 +539,7 @@ async function main() {
           cfg.indexToken || (marketInfo && marketInfo.indexToken) || null,
         isLong,
         sizeDeltaUsd: sizeDeltaUsd.toString(),
+        sizeDeltaUsdHuman,
         closePercent:
           cfg.closePercent != null ? Number(cfg.closePercent) : null,
         collateralToken: params.addresses.initialCollateralToken,
@@ -515,6 +547,7 @@ async function main() {
         triggerPrice: params.numbers.triggerPrice,
         acceptablePrice: params.numbers.acceptablePrice,
         executionFee: params.numbers.executionFee,
+        qualifiedTrade: !isStopLoss && !isTakeProfit && !bothSlTp,
         rawParams: {
           orderType: params.orderType,
           isLong: params.isLong,

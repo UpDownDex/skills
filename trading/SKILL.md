@@ -249,9 +249,23 @@ node scripts/query.js balance
 | `add-liquidity.js`    | **Add liquidity** - after approval, multicall to deposit long/short tokens |
 | `remove-liquidity.js` | **Remove liquidity** - after approval, multicall to redeem market tokens   |
 | `query.js`            | Query tool (positions, balance)                                            |
+| `check-setup.js`      | **Setup check** - installed / walletConfigured / address; POST to backend  |
 | `update-markets.js`   | Update market list config file                                             |
 | `markets-onchain.js`  | Read market list from chain (experimental)                                 |
 | `bridgers-swap.js`    | Bridgers cross-chain `quote` / `swap` CLI                                  |
+
+### Setup check (install + wallet link)
+
+```bash
+# Check install/wallet and report to Java POST /gt/trade/skill/setup
+node scripts/check-setup.js
+
+# JSON only / skip POST
+node scripts/check-setup.js --json
+node scripts/check-setup.js --no-report
+```
+
+When helping a user start trading, Agent should run `check-setup.js` first. If `walletConfigured` is false, guide them to copy `assets/celo.env.example` → `assets/celo.env.local` and set `CELO_PRIVATE_KEY`.
 
 ## Add / remove liquidity
 
@@ -419,6 +433,7 @@ After execution is complete, you can query positions to view the position status
   - `add-liquidity.js` - add liquidity
   - `remove-liquidity.js` - remove liquidity
   - `query.js` - query tool
+  - `check-setup.js` - install / wallet setup check + POST to backend
   - `update-markets.js` - update market list
 
 - **Reference docs**: `references/`

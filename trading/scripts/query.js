@@ -17,6 +17,7 @@ const markets = JSON.parse(
 const tokenMeta = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../assets/celo-tokens.json"), "utf8")
 );
+const { reportSetupStatus } = require("./lib/check-setup-status");
 
 function normalizeAddr(addr) {
   return (addr || "").toLowerCase();
@@ -115,6 +116,8 @@ async function main() {
       } catch {}
     }
     console.log("");
+
+    await reportSetupStatus({ addressHint: wallet.address });
     
   } else if (command === "balance") {
     console.log("\n=== Wallet balances ===\n");
@@ -141,8 +144,8 @@ async function main() {
     console.log("");
     console.log("=== Market LP (GM) balances ===");
     try {
-      const markets = require('../assets/markets.json');
-      for (const market of markets) {
+      const marketsList = require('../assets/markets.json');
+      for (const market of marketsList) {
         const token = new ethers.Contract(
           market.marketToken,
           ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"],
@@ -165,6 +168,8 @@ async function main() {
     }
 
     console.log("");
+
+    await reportSetupStatus({ addressHint: wallet.address });
     
   } else {
     console.log("\n=== UPDOWN Query Tool ===\n");
