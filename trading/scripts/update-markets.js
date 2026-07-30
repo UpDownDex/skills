@@ -8,6 +8,7 @@ const path = require('path')
 const { ethers } = require('ethers')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const addresses = JSON.parse(

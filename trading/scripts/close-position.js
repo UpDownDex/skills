@@ -3,6 +3,7 @@ const path = require('path')
 const { ethers } = require('ethers')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const addresses = JSON.parse(
@@ -40,6 +41,7 @@ const markets = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/markets.json'), 'utf8'),
 )
 const { reportTrade } = require('./lib/report-trade')
+const { resolveExecutionFee } = require('./lib/protocol')
 
 function decodeRevertReason(error) {
   const data =
@@ -88,12 +90,6 @@ function keyOfString(value) {
   return ethers.utils.keccak256(
     ethers.utils.defaultAbiCoder.encode(['string'], [value]),
   )
-}
-
-function applyFactor(value, factor) {
-  return value
-    .mul(factor)
-    .div(ethers.constants.WeiPerEther.mul('1000000000000'))
 }
 
 function findTokenDecimalsByAddress(tokenAddress) {
@@ -243,6 +239,11 @@ async function main() {
       'No matching open position found. Provide market/isLong/initialCollateralToken/indexToken to disambiguate.',
     )
   }
+  if (candidates.length > 1) {
+    throw new Error(
+      'Multiple positions match market and side. Set initialCollateralToken to select one explicitly.',
+    )
+  }
 
   candidates.sort((a, b) => {
     const sa = ethers.BigNumber.from(a.numbers.sizeInUsd)
@@ -301,8 +302,15 @@ async function main() {
     )
   }
 
-  const executionFee =
-    cfg.executionFee ?? toUnits(cfg.executionFeeHuman ?? 0.2, 18)
+  const executionFee = await resolveExecutionFee({
+    cfg,
+    dataStore,
+    provider,
+    gasLimitKey: 'DECREASE_ORDER_GAS_LIMIT',
+    swapCount: (cfg.swapPath || []).length,
+    oraclePriceCount: 3 + (cfg.swapPath || []).length,
+    callbackGasLimit: cfg.callbackGasLimit || 0,
+  })
   if (!executionFee) throw new Error('Missing executionFee / executionFeeHuman')
 
   const hasAcceptablePriceFromConfig =
@@ -370,37 +378,13 @@ async function main() {
   )
 
   try {
-    const [
-      minPositionSizeUsd,
-      decreaseOrderGasLimit,
-      singleSwapGasLimit,
-      baseGasFee,
-      gasFeePerOracle,
-      gasFeeMultiplier,
-    ] = await Promise.all([
-      dataStore.getUint(keyOfString('MIN_POSITION_SIZE_USD')),
-      dataStore.getUint(keyOfString('DECREASE_ORDER_GAS_LIMIT')),
-      dataStore.getUint(keyOfString('SINGLE_SWAP_GAS_LIMIT')),
-      dataStore.getUint(keyOfString('ESTIMATED_GAS_FEE_BASE_AMOUNT_V2_1')),
-      dataStore.getUint(keyOfString('ESTIMATED_GAS_FEE_PER_ORACLE_PRICE')),
-      dataStore.getUint(keyOfString('ESTIMATED_GAS_FEE_MULTIPLIER_FACTOR')),
-    ])
-    const swapCount = (cfg.swapPath || []).length
-    const oraclePriceCount = 3 + swapCount
-    const estimatedGasLimit = decreaseOrderGasLimit
-      .add(singleSwapGasLimit.mul(swapCount))
-      .add(cfg.callbackGasLimit || '0')
-    const baseLimit = baseGasFee.add(gasFeePerOracle.mul(oraclePriceCount))
-    const estimatedLimit = baseLimit.add(
-      applyFactor(estimatedGasLimit, gasFeeMultiplier),
+    const minPositionSizeUsd = await dataStore.getUint(
+      keyOfString('MIN_POSITION_SIZE_USD'),
     )
-    const gasPrice = await provider.getGasPrice()
-    const minExecutionFee = estimatedLimit.mul(gasPrice)
     console.log(
       'minPositionSizeUsd:',
       ethers.utils.formatUnits(minPositionSizeUsd, 30),
     )
-    console.log('estimatedMinExecutionFee (wei):', minExecutionFee.toString())
   } catch (err) {
     console.log('limit checks failed:', decodeRevertReason(err))
   }

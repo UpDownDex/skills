@@ -10,6 +10,8 @@ Currently, `markets.json` is a static config file and contains the following mar
 4. EURm/USDT
 5. JPYm/USDT
 6. NGNm/USDT
+7. AUDm/USDT
+8. GBPm/USDT
 
 ## Problem
 

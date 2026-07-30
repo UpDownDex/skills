@@ -24,12 +24,20 @@ const erc20Abi = JSON.parse(
 const errorsAbi = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../assets/abis/Errors.json"), "utf8")
 ).abi;
+const dataStoreAbi = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../assets/abis/DataStore.json"), "utf8")
+).abi;
 const tokenMeta = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../assets/celo-tokens.json"), "utf8")
 );
 const markets = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../assets/markets.json"), "utf8")
 );
+const {
+  ensureAllowance,
+  findMarket,
+  resolveExecutionFee,
+} = require("./lib/protocol");
 
 function decodeRevertReason(error) {
   const data =
@@ -68,12 +76,7 @@ function normalizeAddr(addr) {
 }
 
 function findMarketBySymbol(symbol) {
-  const s = (symbol || "").toUpperCase();
-  return markets.find(
-    (m) =>
-      m.indexTokenSymbol === s ||
-      (m.longTokenSymbol + "/" + m.shortTokenSymbol) === s
-  ) || null;
+  return findMarket(markets, symbol);
 }
 
 async function main() {
@@ -112,6 +115,7 @@ async function main() {
     chainId: Number(process.env.CELO_CHAIN_ID || "42220"),
     name: "celo",
   });
+  const dataStore = new ethers.Contract(celo.DataStore, dataStoreAbi, provider);
   const wallet = new ethers.Wallet(privateKey, provider);
   const account = cfg.receiver || wallet.address;
 
@@ -135,9 +139,14 @@ async function main() {
   const marketTokenAmount =
     cfg.marketTokenAmount ??
     toUnits(cfg.marketTokenAmountHuman ?? 0, 18);
-  const executionFee =
-    cfg.executionFee ??
-    toUnits(cfg.executionFeeHuman ?? 0.2, 18);
+  const executionFee = await resolveExecutionFee({
+    cfg,
+    dataStore,
+    provider,
+    gasLimitKey: "WITHDRAWAL_GAS_LIMIT",
+    oraclePriceCount: 3,
+    callbackGasLimit: cfg.callbackGasLimit || 0,
+  });
 
   if (!marketTokenAmount || ethers.BigNumber.from(marketTokenAmount).isZero()) {
     throw new Error("Missing marketTokenAmount or marketTokenAmountHuman");
@@ -178,14 +187,24 @@ async function main() {
 
   if (wntAllowance.lt(executionFee)) {
     console.log("Approving WNT to Router...");
-    const tx = await wntContract.approve(routerAddress, maxUint);
-    await tx.wait();
+    await ensureAllowance({
+      token: wntContract,
+      owner: account,
+      spender: routerAddress,
+      required: executionFee,
+      approveAmount: maxUint,
+    });
     console.log("  WNT approved");
   }
   if (marketAllowance.lt(marketTokenAmount)) {
     console.log("Approving market token to Router...");
-    const tx = await marketTokenContract.approve(routerAddress, maxUint);
-    await tx.wait();
+    await ensureAllowance({
+      token: marketTokenContract,
+      owner: account,
+      spender: routerAddress,
+      required: marketTokenAmount,
+      approveAmount: maxUint,
+    });
     console.log("  Market token approved");
   }
 

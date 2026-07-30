@@ -5,7 +5,11 @@
 Trading on the **Updown** platform uses the system’s **wrap tokens** on Celo as collateral and settlement assets (for example wrapped USDT, BTC, ETH, and other markets). Those tokens are **not** arbitrary user-chosen ERC-20s: you must use the addresses and decimals the platform defines.
 
 - **Source of truth**: [`assets/celo-tokens.json`](../assets/celo-tokens.json) lists each market’s wrap token (`symbol`, contract `address`, `decimals`, and a short `description` of how it is used on Updown).
-- **Getting wrap tokens**: Users often start with assets on **other chains**. They can **swap or bridge** (deposit) via Bridgers-compatible routes—using the chain and token metadata in this doc and in `omni-bridgers-tokens.json` / `scripts/bridgers-swap.js`—to receive the correct Celo wrap tokens, then use those balances for Updown perpetual trading and related operations.
+- **Getting wrap tokens**: Users often start with assets on **other chains**.
+  Bridgers-compatible routes can return a transfer or deposit instruction that
+  is settled by an external operator. Do not assume the route is atomic. Verify
+  the quote's sender, receiver, expected output, timeout, and status mechanism,
+  and disclose counterparty and inventory risk before funds move.
 
 ## Omni Bridgers swap
 
@@ -67,3 +71,14 @@ With these three config files, your scripts can:
 1. Based on chain ID / chain identifier, read token info supported by Bridgers from `omni-bridgers-tokens.json` (address, decimals, `mainNetwork`, etc.) and fill `fromTokenAddress` / `toTokenAddress`, `fromCoinCode` / `toCoinCode`.
 2. Based on `fromTokenChain` / `toTokenChain`, select an appropriate RPC endpoint from `omni-bridgers-rpc.json` and initialize a Provider.
 3. Read Bridgers / Perpex API config from `omni-bridgers-api.json`, merge common params and headers as needed, and send `quote` / `swap` / history / token‑list requests.
+
+## Required request invariants
+
+- Resolve tokens by address, not display name.
+- Confirm `fromTokenAddress` and `toTokenAddress` differ.
+- Send `sourceType: "H5"` and `sourceFlag: "perpex01"`.
+- Set `equipmentNo` to the user's wallet address.
+- After the transaction is mined, send its hash to
+  `/api/exchangeRecord/updateDataAndStatus`.
+- Treat a missing status update, missing destination receipt, or swallowed API
+  error as failure.

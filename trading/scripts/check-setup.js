@@ -17,6 +17,7 @@
 const path = require('path')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const {

@@ -1,6 +1,10 @@
 const fs = require('fs')
 const path = require('path')
 const { ethers } = require('ethers')
+require('dotenv').config({
+  path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
+})
 
 // Bridgers API base URL
 const BRIDGERS_API_BASE = 'https://api.bridgers.xyz'
@@ -173,8 +177,6 @@ function getProviderAndWallet(chainName, privateKey) {
   let wallet
   if (privateKey) {
     wallet = new ethers.Wallet(privateKey, provider)
-  } else {
-    wallet = ethers.Wallet.createRandom().connect(provider)
   }
   return { provider, wallet, config }
 }
@@ -184,10 +186,9 @@ function buildUrl(base, path) {
   return base.replace(/\/$/, '') + path
 }
 
-// Get quote (fetchQuote)
-async function fetchQuote(params) {
+async function postBridgers(pathname, params) {
   const response = await fetch(
-    buildUrl(BRIDGERS_API_BASE, '/api/sswap/quote'),
+    buildUrl(BRIDGERS_API_BASE, pathname),
     {
       method: 'POST',
       headers: {
@@ -196,34 +197,39 @@ async function fetchQuote(params) {
       body: JSON.stringify(params),
     },
   )
-  return response.json()
+  const text = await response.text()
+  let body
+  try {
+    body = text ? JSON.parse(text) : null
+  } catch {
+    throw new Error(`Bridgers returned invalid JSON (HTTP ${response.status})`)
+  }
+  if (!response.ok) {
+    throw new Error(
+      `Bridgers HTTP ${response.status}: ${
+        body?.resMsg || body?.message || text.slice(0, 200)
+      }`,
+    )
+  }
+  return body
+}
+
+// Get quote (fetchQuote)
+async function fetchQuote(params) {
+  return postBridgers('/api/sswap/quote', params)
 }
 
 // Get swap calldata (fetchSwapCall)
 async function fetchSwapCall(params) {
-  const response = await fetch(buildUrl(BRIDGERS_API_BASE, '/api/sswap/swap'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
-  })
-  return response.json()
+  return postBridgers('/api/sswap/swap', params)
 }
 
 // Upload transaction hash to Bridgers (updateDataAndStatus)
 async function updateDataAndStatus(params) {
-  const response = await fetch(
-    buildUrl(BRIDGERS_API_BASE, '/api/exchangeRecord/updateDataAndStatus'),
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
-    },
+  return postBridgers(
+    '/api/exchangeRecord/updateDataAndStatus',
+    params,
   )
-  return response.json()
 }
 
 // Query transaction history (fetchTransData)
@@ -273,8 +279,7 @@ Examples:
     --to celo \\
     --fromToken USDT \\
     --toToken USDT \\
-    --amount 5 \\
-    --privateKey <privateKey>
+    --amount 5
 
   ## Execute swap
   node scripts/bridgers-swap.js swap \\
@@ -283,30 +288,29 @@ Examples:
     --fromToken USDT \\
     --toToken USDT \\
     --amount 5 \\
-    --slippage 0.5 \\
-    --privateKey <privateKey>
+    --slippage 0.5
 
   # 2. Same chain on Celo: native USDT -> platform USDT (Celo USDT(Native) -> Celo USDT)
    ## Get quote (Celo USDT(Native) -> Celo USDT)
   node scripts/bridgers-swap.js quote \\
     --from celo \\
     --to celo \\
-    --fromToken USDT(Native) \\
+    --fromToken 'USDT(Native)' \\
     --toToken USDT \\
-    --amount 5 \\
-    --privateKey <privateKey>
+    --amount 5
 
    ## Execute swap
   node scripts/bridgers-swap.js swap \\
     --from celo \\
     --to celo \\
-    --fromToken USDT(Native) \\
+    --fromToken 'USDT(Native)' \\
     --toToken USDT \\
     --amount 5 \\
-    --slippage 0.5 \\
-    --privateKey <privateKey>
+    --slippage 0.5
 
 Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
+Swap signing key: set BRIDGERS_PRIVATE_KEY in assets/celo.env.local.
+For quote-only requests without a local key, pass --walletAddress 0x...
 `)
     return
   }
@@ -324,20 +328,25 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
   const fromToken = params.fromToken
   const toToken = params.toToken
   const amount = params.amount
-  const privateKey = params.privateKey
+  if (params.privateKey) {
+    throw new Error(
+      'Do not pass private keys on the command line; set BRIDGERS_PRIVATE_KEY in assets/celo.env.local',
+    )
+  }
+  const privateKey =
+    process.env.BRIDGERS_PRIVATE_KEY || process.env.CELO_PRIVATE_KEY
   const slippage = parseFloat(params.slippage || '0.5')
 
   if (!fromChain || !toChain || !fromToken || !toToken || !amount) {
-    console.error('❌ Error: missing required parameters')
-    console.error(
+    throw new Error(
       'Please provide: --from, --to, --fromToken, --toToken, --amount',
     )
-    return
   }
 
   if (!privateKey && command === 'swap') {
-    console.error('❌ Error: swap command requires --privateKey <privateKey>')
-    return
+    throw new Error(
+      'Swap requires BRIDGERS_PRIVATE_KEY in assets/celo.env.local',
+    )
   }
 
   console.log(`\n=== Bridgers Cross-chain Swap ===`)
@@ -353,8 +362,14 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
       fromChain,
       privateKey,
     )
+    const walletAddress = wallet?.address || params.walletAddress
+    if (!walletAddress || !ethers.utils.isAddress(walletAddress)) {
+      throw new Error(
+        'A real wallet is required: configure BRIDGERS_PRIVATE_KEY or pass --walletAddress for quote',
+      )
+    }
     console.log(`\n✅ Using ${fromChain} chain config`)
-    console.log(`📋 Wallet address: ${wallet.address}`)
+    console.log(`📋 Wallet address: ${walletAddress}`)
     console.log(`🔗 RPC:            ${config.rpcUrls[0]}`)
 
     // Load token info from JSON config
@@ -395,8 +410,8 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
       throw new Error(`Unsupported source token: ${fromToken} on ${fromChain}`)
     }
 
-    console.log(`\n📤 From address: ${wallet.address}`)
-    console.log(`📥 To address:   ${wallet.address}`)
+    console.log(`\n📤 From address: ${walletAddress}`)
+    console.log(`📥 To address:   ${walletAddress}`)
     console.log(
       `   ⚠️  Cross-chain transfer will send funds to this address, please double-check!`,
     )
@@ -407,7 +422,7 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
       .toString()
 
     const quoteParams = {
-      equipmentNo: wallet.address,
+      equipmentNo: walletAddress,
       sourceType: 'H5',
       userNo: '',
       sessionUuid: '',
@@ -415,12 +430,22 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
       sourceFlag: 'perpex01',
       utmSource: '',
       fromTokenAddress: fromTokenInfo.address,
-      toTokenAddress: toTokenInfo?.address || fromTokenInfo.address,
+      toTokenAddress: toTokenInfo?.address,
       fromTokenAmount: fromTokenAmountRaw,
       fromTokenChain: CHAIN_NAMES[fromChain.toLowerCase()],
       toTokenChain: CHAIN_NAMES[toChain.toLowerCase()],
-      userAddr: wallet.address,
+      userAddr: walletAddress,
       source: '',
+    }
+    if (!toTokenInfo) {
+      throw new Error(`Unsupported destination token: ${toToken} on ${toChain}`)
+    }
+    if (
+      fromTokenInfo.address.toLowerCase() === toTokenInfo.address.toLowerCase()
+    ) {
+      throw new Error(
+        'Source and destination token addresses are identical; check token symbol mapping',
+      )
     }
 
     console.log('\nRequest params (fetchQuote):')
@@ -608,8 +633,8 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
 
     const swapParams = {
       ...quoteParams,
-      fromAddress: wallet.address,
-      toAddress: wallet.address,
+      fromAddress: walletAddress,
+      toAddress: walletAddress,
       amountOutMin: amountOutMin,
       fromCoinCode: fromTokenInfo.symbol,
       toCoinCode: toTokenInfo?.symbol || fromTokenInfo.symbol,
@@ -649,6 +674,7 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
 
     console.log(`\n⏳ Waiting for confirmation...`)
     const receipt = await tx.wait()
+    if (receipt.status !== 1) throw new Error('Source-chain transaction failed')
     console.log(`\n✅ Transaction confirmed!`)
     console.log(`   Block: ${receipt.blockNumber}`)
     console.log(`   Gas used: ${receipt.gasUsed.toString()}`)
@@ -683,15 +709,18 @@ Supported chains: ethereum, bsc, arbitrum, celo, polygon, base
       if (updateResult.resCode === 100) {
         console.log(`✅ Tx hash successfully synced to Bridgers backend!`)
       } else {
-        console.log(`⚠️ Tx hash sync failed: ${updateResult.resMsg}`)
+        throw new Error(`Tx hash sync failed: ${updateResult.resMsg}`)
       }
     } catch (e) {
-      console.error(`❌ Error calling updateDataAndStatus:`, e.message)
+      throw new Error(`updateDataAndStatus failed: ${e.message}`)
     }
   } catch (error) {
     console.error(`\n❌ Error:`, error.message)
-    process.exit(1)
+    process.exitCode = 1
   }
 }
 
-main().catch(console.error)
+main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})

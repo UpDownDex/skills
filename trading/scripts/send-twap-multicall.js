@@ -3,6 +3,7 @@ const path = require('path')
 const ethers = require('ethers')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const addresses = JSON.parse(
@@ -17,11 +18,25 @@ const exchangeRouterAbi = JSON.parse(
 const readerAbi = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/abis/Reader.json'), 'utf8'),
 ).abi
+const dataStoreAbi = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../assets/abis/DataStore.json'), 'utf8'),
+).abi
+const erc20Abi = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../assets/abis/ERC20.json'), 'utf8'),
+).abi
+const tokenMeta = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../assets/celo-tokens.json'), 'utf8'),
+)
 
 const {
   reportTrade,
   extractOrderKeysFromReceipt,
 } = require('./lib/report-trade')
+const {
+  ensureAllowance,
+  findTokenDecimalsByAddress,
+  resolveExecutionFee,
+} = require('./lib/protocol')
 
 const MAX_UINT256 =
   '115792089237316195423570985008687907853269984665640564039457584007913129639935'
@@ -88,19 +103,35 @@ function findMatchingPosition(positions, cfg) {
   const market = cfg.market
   const isLong = cfg.isLong
 
-  return positions.find((p) => {
+  const matches = positions.filter((p) => {
     const marketMatch =
       normalizeAddr(p.addresses.market) === normalizeAddr(market)
     const isLongMatch = p.flags.isLong === isLong
+    const collateralMatch =
+      !cfg.initialCollateralToken ||
+      normalizeAddr(p.addresses.collateralToken) ===
+        normalizeAddr(cfg.initialCollateralToken)
     const hasSize = ethers.BigNumber.from(p.numbers.sizeInUsd || 0).gt(0)
-    return marketMatch && isLongMatch && hasSize
+    return marketMatch && isLongMatch && collateralMatch && hasSize
   })
+  if (matches.length > 1) {
+    throw new Error(
+      'Multiple positions match this TWAP close; set initialCollateralToken',
+    )
+  }
+  return matches[0]
 }
 
 // Build multicall data
 async function buildMulticallData(configs, account, exchangeRouter, provider) {
   const multicallArgs = []
   let totalExecutionFee = ethers.BigNumber.from(0)
+  const requiredByToken = new Map()
+  const dataStore = new ethers.Contract(
+    addresses.celo.DataStore,
+    dataStoreAbi,
+    provider,
+  )
 
   // Query all positions
   const allPositions = await getPositions(provider, account)
@@ -109,12 +140,25 @@ async function buildMulticallData(configs, account, exchangeRouter, provider) {
   for (const cfg of configs) {
     const isLong = cfg.isLong
     const isClose = cfg.orderType >= 4 && cfg.orderType <= 6
-    const indexTokenDecimals = 18
+    const marketInfo = require('../assets/markets.json').find(
+      (market) => normalizeAddr(market.marketToken) === normalizeAddr(cfg.market),
+    )
+    const indexToken = cfg.indexToken || (marketInfo && marketInfo.indexToken)
+    const indexTokenDecimals =
+      findTokenDecimalsByAddress(tokenMeta, indexToken) ?? 18
     const acceptablePriceDecimals = 30 - indexTokenDecimals
 
-    // Calculate execution fee
-    const executionFee =
-      cfg.executionFee ?? toUnits(cfg.executionFeeHuman ?? 0.2, 18)
+    const executionFee = await resolveExecutionFee({
+      cfg,
+      dataStore,
+      provider,
+      gasLimitKey: isClose
+        ? 'DECREASE_ORDER_GAS_LIMIT'
+        : 'INCREASE_ORDER_GAS_LIMIT',
+      swapCount: (cfg.swapPath || []).length,
+      oraclePriceCount: 3 + (cfg.swapPath || []).length,
+      callbackGasLimit: cfg.callbackGasLimit || 0,
+    })
     totalExecutionFee = totalExecutionFee.add(
       ethers.BigNumber.from(executionFee),
     )
@@ -153,12 +197,29 @@ async function buildMulticallData(configs, account, exchangeRouter, provider) {
     } else {
       // Open orders
       sizeDeltaUsd = cfg.sizeDeltaUsdHuman
+        != null
         ? toUnits(cfg.sizeDeltaUsdHuman, 30)
         : cfg.sizeDeltaUsd || '0'
-      initialCollateralDeltaAmount = cfg.initialCollateralDeltaAmountHuman
-        ? toUnits(cfg.initialCollateralDeltaAmountHuman, 6)
+      const collateralDecimals =
+        findTokenDecimalsByAddress(tokenMeta, cfg.initialCollateralToken) ??
+        Number(
+          await new ethers.Contract(
+            cfg.initialCollateralToken,
+            erc20Abi,
+            provider,
+          ).decimals(),
+        )
+      initialCollateralDeltaAmount =
+        cfg.initialCollateralDeltaAmountHuman != null
+        ? toUnits(cfg.initialCollateralDeltaAmountHuman, collateralDecimals)
         : cfg.initialCollateralDeltaAmount || '0'
       initialCollateralToken = cfg.initialCollateralToken
+      const key = normalizeAddr(initialCollateralToken)
+      const current = requiredByToken.get(key) || ethers.BigNumber.from(0)
+      requiredByToken.set(
+        key,
+        current.add(initialCollateralDeltaAmount),
+      )
     }
 
     // TWAP price settings
@@ -238,6 +299,20 @@ async function buildMulticallData(configs, account, exchangeRouter, provider) {
     multicallArgs.push(createOrderData)
   }
 
+  for (const [tokenAddress, required] of requiredByToken.entries()) {
+    const token = new ethers.Contract(
+      tokenAddress,
+      erc20Abi,
+      exchangeRouter.signer,
+    )
+    await ensureAllowance({
+      token,
+      owner: account,
+      spender: addresses.celo.Router,
+      required,
+    })
+  }
+
   return { multicallArgs, totalExecutionFee }
 }
 
@@ -315,6 +390,10 @@ async function main() {
   console.log('')
 
   try {
+    await exchangeRouter.callStatic.multicall(multicallArgs, {
+      value: totalExecutionFee,
+    })
+
     // Send multicall transaction
     const tx = await exchangeRouter.multicall(multicallArgs, {
       value: totalExecutionFee,
@@ -380,10 +459,11 @@ async function main() {
       })
     }
   } catch (err) {
-    console.log('\n❌ Failed to send TWAP Multicall:', err.message)
+    console.error('\n❌ Failed to send TWAP Multicall:', err.message)
     if (err.reason) {
-      console.log('Reason:', err.reason)
+      console.error('Reason:', err.reason)
     }
+    throw err
   }
 }
 

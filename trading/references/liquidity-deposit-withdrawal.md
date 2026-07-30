@@ -64,7 +64,7 @@ Configure the following under `celo` in `assets/addresses.json`:
 | initialShortToken           | no       | Short token address; auto‑resolved when using `marketSymbol`              |
 | initialLongTokenAmountHuman | yes      | Long token amount (human readable)                                        |
 | initialShortTokenAmountHuman| yes      | Short token amount (human readable)                                       |
-| executionFeeHuman           | no       | Execution fee, default 0.2                                                |
+| executionFeeHuman           | no       | Optional override; must meet the current on-chain buffered minimum         |
 | receiver                    | no       | Address to receive market tokens, defaults to current wallet              |
 
 *At least one of `market` or `marketSymbol` must be provided.
@@ -76,7 +76,6 @@ Configure the following under `celo` in `assets/addresses.json`:
   "marketSymbol": "BTC",
   "initialLongTokenAmountHuman": 0.001,
   "initialShortTokenAmountHuman": 10,
-  "executionFeeHuman": 0.2,
   "receiver": ""
 }
 ```
@@ -123,7 +122,7 @@ The contract parameters for `createDeposit`:
 | market               | yes*     | Market token (LP) address                                  |
 | marketSymbol         | yes*     | Market symbol, auto‑resolved to market address            |
 | marketTokenAmountHuman | yes    | Market token amount to redeem (human readable)            |
-| executionFeeHuman    | no       | Execution fee, default 0.2                                |
+| executionFeeHuman    | no       | Optional override; must meet the current on-chain buffered minimum |
 | receiver             | no       | Address to receive long/short tokens, defaults to wallet  |
 
 *At least one of `market` or `marketSymbol` must be provided.
@@ -134,7 +133,6 @@ The contract parameters for `createDeposit`:
 {
   "marketSymbol": "BTC",
   "marketTokenAmountHuman": 0.1,
-  "executionFeeHuman": 0.2,
   "receiver": ""
 }
 ```
@@ -172,6 +170,9 @@ Error: `Missing or invalid DepositVault` or `Missing or invalid WithdrawalVault`
 ### 2. Approval failed
 
 Make sure WNT, long, short, or market tokens are approved for the `Router` address. The script will auto‑check and send `approve` when necessary; users must ensure they have enough gas.
+
+After an approval is mined, the script re-reads allowance before it submits the
+liquidity request. If the updated allowance is not visible, it exits non-zero.
 
 ### 3. Insufficient balance
 

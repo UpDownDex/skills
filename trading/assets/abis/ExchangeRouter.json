@@ -125,6 +125,28 @@
       "outputs": [{ "name": "", "type": "bytes32" }],
       "stateMutability": "payable",
       "type": "function"
+    },
+    {
+      "inputs": [{ "name": "key", "type": "bytes32" }],
+      "name": "cancelOrder",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "name": "key", "type": "bytes32" },
+        { "name": "sizeDeltaUsd", "type": "uint256" },
+        { "name": "acceptablePrice", "type": "uint256" },
+        { "name": "triggerPrice", "type": "uint256" },
+        { "name": "minOutputAmount", "type": "uint256" },
+        { "name": "validFromTime", "type": "uint256" },
+        { "name": "autoCancel", "type": "bool" }
+      ],
+      "name": "updateOrder",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
     }
   ]
 }

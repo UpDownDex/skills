@@ -9,6 +9,7 @@ const path = require('path')
 const { ethers } = require('ethers')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const addresses = JSON.parse(
@@ -26,12 +27,20 @@ const erc20Abi = JSON.parse(
 const errorsAbi = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/abis/Errors.json'), 'utf8'),
 ).abi
+const dataStoreAbi = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../assets/abis/DataStore.json'), 'utf8'),
+).abi
 const tokenMeta = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/celo-tokens.json'), 'utf8'),
 )
 const markets = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/markets.json'), 'utf8'),
 )
+const {
+  ensureAllowance,
+  findMarket,
+  resolveExecutionFee,
+} = require('./lib/protocol')
 
 function decodeRevertReason(error) {
   const data =
@@ -81,14 +90,7 @@ function findTokenDecimalsByAddress(tokenAddress) {
 }
 
 function findMarketBySymbol(symbol) {
-  const s = (symbol || '').toUpperCase()
-  return (
-    markets.find(
-      (m) =>
-        m.indexTokenSymbol === s ||
-        m.longTokenSymbol + '/' + m.shortTokenSymbol === s,
-    ) || null
-  )
+  return findMarket(markets, symbol)
 }
 
 async function main() {
@@ -131,6 +133,7 @@ async function main() {
     chainId: Number(process.env.CELO_CHAIN_ID || '42220'),
     name: 'celo',
   })
+  const dataStore = new ethers.Contract(celo.DataStore, dataStoreAbi, provider)
   const wallet = new ethers.Wallet(privateKey, provider)
   const account = cfg.receiver || wallet.address
 
@@ -168,8 +171,14 @@ async function main() {
   const shortAmount =
     cfg.initialShortTokenAmount ??
     toUnits(cfg.initialShortTokenAmountHuman, shortDecimals)
-  const executionFee =
-    cfg.executionFee ?? toUnits(cfg.executionFeeHuman ?? 0.2, 18)
+  const executionFee = await resolveExecutionFee({
+    cfg,
+    dataStore,
+    provider,
+    gasLimitKey: 'DEPOSIT_GAS_LIMIT',
+    oraclePriceCount: 3,
+    callbackGasLimit: cfg.callbackGasLimit || 0,
+  })
 
   if (!longAmount || !shortAmount || !executionFee) {
     throw new Error(
@@ -243,20 +252,35 @@ async function main() {
 
   if (wntAllowance.lt(executionFee)) {
     console.log('Approving WNT to Router...')
-    const tx = await wntContract.approve(routerAddress, maxUint)
-    await tx.wait()
+    await ensureAllowance({
+      token: wntContract,
+      owner: account,
+      spender: routerAddress,
+      required: executionFee,
+      approveAmount: maxUint,
+    })
     console.log('  WNT approved')
   }
   if (longAllowance.lt(longAmount)) {
     console.log('Approving long token to Router...')
-    const tx = await longContract.approve(routerAddress, maxUint)
-    await tx.wait()
+    await ensureAllowance({
+      token: longContract,
+      owner: account,
+      spender: routerAddress,
+      required: longAmount,
+      approveAmount: maxUint,
+    })
     console.log('  Long token approved')
   }
   if (shortAllowance.lt(shortAmount)) {
     console.log('Approving short token to Router...')
-    const tx = await shortContract.approve(routerAddress, maxUint)
-    await tx.wait()
+    await ensureAllowance({
+      token: shortContract,
+      owner: account,
+      spender: routerAddress,
+      required: shortAmount,
+      approveAmount: maxUint,
+    })
     console.log('  Short token approved')
   }
 

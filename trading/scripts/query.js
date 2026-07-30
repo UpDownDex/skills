@@ -1,187 +1,193 @@
-const fs = require("fs");
-const path = require("path");
-const { ethers } = require("ethers");
-require("dotenv").config({
-  path: path.resolve(__dirname, "../assets/celo.env.local"),
-});
+#!/usr/bin/env node
 
-const addresses = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../assets/addresses.json"), "utf8")
-);
-const readerAbi = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../assets/abis/Reader.json"), "utf8")
-).abi;
-const markets = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../assets/markets.json"), "utf8")
-);
-const tokenMeta = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../assets/celo-tokens.json"), "utf8")
-);
-const { reportSetupStatus } = require("./lib/check-setup-status");
+const path = require('path')
+const { ethers } = require('ethers')
+require('dotenv').config({
+  path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
+})
 
-function normalizeAddr(addr) {
-  return (addr || "").toLowerCase();
+const addresses = require('../assets/addresses.json')
+const readerAbi = require('../assets/abis/Reader.json').abi
+const dataStoreAbi = require('../assets/abis/DataStore.json').abi
+const markets = require('../assets/markets.json')
+const tokenMeta = require('../assets/celo-tokens.json')
+const { reportSetupStatus } = require('./lib/check-setup-status')
+const { getAccountOrders } = require('./lib/order-store')
+const {
+  findTokenDecimalsByAddress,
+} = require('./lib/protocol')
+
+const ERC20_VIEW_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+]
+const NATIVE_USDT = {
+  symbol: 'USDT (native)',
+  address: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
+  decimals: 6,
+}
+const ORDER_TYPES = [
+  'MarketSwap',
+  'LimitSwap',
+  'MarketIncrease',
+  'LimitIncrease',
+  'MarketDecrease',
+  'LimitDecrease',
+  'StopLossDecrease',
+  'Liquidation',
+  'StopIncrease',
+]
+
+function normalizeAddress(value) {
+  return String(value || '').toLowerCase()
 }
 
-function findMarketInfo(marketToken) {
-  const target = normalizeAddr(marketToken);
-  return markets.find((m) => normalizeAddr(m.marketToken) === target) || null;
+function marketInfo(address) {
+  return (
+    markets.find(
+      (market) =>
+        normalizeAddress(market.marketToken) === normalizeAddress(address),
+    ) || null
+  )
 }
 
-function getTokenSymbol(address) {
-  for (const [symbol, info] of Object.entries(tokenMeta)) {
-    if (normalizeAddr(info.address) === normalizeAddr(address)) {
-      return symbol;
-    }
-  }
-  return address.slice(0, 10) + "...";
+function tokenInfo(address) {
+  const entry = Object.values(tokenMeta).find(
+    (token) => normalizeAddress(token.address) === normalizeAddress(address),
+  )
+  return entry || null
 }
 
-async function main() {
-  const command = process.argv[2] || "positions";
-  
-  const rpcUrl = process.env.CELO_RPC_URL;
-  const privateKey = process.env.CELO_PRIVATE_KEY;
-  
-  if (!rpcUrl || !privateKey) {
-    throw new Error("Missing CELO_RPC_URL or CELO_PRIVATE_KEY in assets/celo.env.local");
-  }
+async function printBalances(provider, account) {
+  console.log('\n=== Wallet balances ===')
+  const celo = await provider.getBalance(account)
+  console.log(`CELO (native): ${ethers.utils.formatEther(celo)}`)
 
-  const provider = new ethers.providers.JsonRpcProvider(rpcUrl, {
-    chainId: Number(process.env.CELO_CHAIN_ID || "42220"),
-    name: "celo",
-  });
-
-  const wallet = new ethers.Wallet(privateKey, provider);
-  const reader = new ethers.Contract(addresses.celo.Reader, readerAbi, provider);
-
-  if (command === "positions") {
-    console.log("\n=== Positions ===\n");
-    console.log("Wallet address:", wallet.address);
-    console.log("");
-    
-    const allPositions = await reader.getAccountPositions(
-      addresses.celo.DataStore,
-      wallet.address,
-      0,
-      50
-    );
-    
-    const openPositions = allPositions.filter((p) =>
-      ethers.BigNumber.from(p.numbers.sizeInUsd || 0).gt(0)
-    );
-    
-    console.log(`Total positions: ${allPositions.length}`);
-    console.log(`Active positions: ${openPositions.length}`);
-    console.log("");
-    
-    if (openPositions.length === 0) {
-      console.log("No active positions");
-    } else {
-      openPositions.forEach((p, i) => {
-        const m = findMarketInfo(p.addresses.market);
-        const marketLabel = m ? `${m.indexTokenSymbol}/USDT` : p.addresses.market;
-        const collateralSymbol = getTokenSymbol(p.addresses.collateralToken);
-        console.log(`--- Position #${i + 1} ---`);
-        console.log(`Market: ${marketLabel}`);
-        console.log(`Side: ${p.flags.isLong ? "🟢 Long" : "🔴 Short"}`);
-        console.log(`Size: ${ethers.utils.formatUnits(p.numbers.sizeInUsd, 30)} USD`);
-        console.log(`Collateral: ${ethers.utils.formatUnits(p.numbers.collateralAmount, 30)} USD`);
-        console.log(`Collateral token: ${collateralSymbol}`);
-        console.log(
-          `Opened at: ${new Date(
-            Number(p.numbers.increasedAtTime) * 1000,
-          ).toLocaleString()}`,
-        );
-        console.log("");
-      });
-    }
-    
-    // Show balances
-    console.log("=== Wallet balances ===");
-    const celoBalance = await provider.getBalance(wallet.address);
-    console.log(`CELO: ${ethers.utils.formatUnits(celoBalance, 18)}`);
-    
-    for (const [symbol, info] of Object.entries(tokenMeta)) {
-      const token = new ethers.Contract(
-        info.address,
-        ["function balanceOf(address) view returns (uint256)"],
-        provider
-      );
-      try {
-        const balance = await token.balanceOf(wallet.address);
-        if (balance.gt(0)) {
-          console.log(`${symbol}: ${ethers.utils.formatUnits(balance, info.decimals)}`);
-        }
-      } catch {}
-    }
-    console.log("");
-
-    await reportSetupStatus({ addressHint: wallet.address });
-    
-  } else if (command === "balance") {
-    console.log("\n=== Wallet balances ===\n");
-    console.log("Wallet address:", wallet.address);
-    console.log("");
-    
-    const celoBalance = await provider.getBalance(wallet.address);
-    console.log(`CELO: ${ethers.utils.formatUnits(celoBalance, 18)}`);
-    
-    for (const [symbol, info] of Object.entries(tokenMeta)) {
-      const token = new ethers.Contract(
-        info.address,
-        ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"],
-        provider
-      );
-      try {
-        const balance = await token.balanceOf(wallet.address);
-        const decimals = await token.decimals();
-        console.log(`${symbol}: ${ethers.utils.formatUnits(balance, decimals)}`);
-      } catch (e) {
-        console.log(`${symbol}: failed to read balance`);
-      }
-    }
-    console.log("");
-    console.log("=== Market LP (GM) balances ===");
+  for (const info of [...Object.values(tokenMeta), NATIVE_USDT]) {
+    const token = new ethers.Contract(info.address, ERC20_VIEW_ABI, provider)
     try {
-      const marketsList = require('../assets/markets.json');
-      for (const market of marketsList) {
-        const token = new ethers.Contract(
-          market.marketToken,
-          ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"],
-          provider
-        );
-        const balance = await token.balanceOf(wallet.address);
-        if (balance.gt(0)) {
-          const decimals = 18;
-          console.log(
-            market.indexTokenSymbol +
-              "/" +
-              market.shortTokenSymbol +
-              " LP (GM Token): " +
-              ethers.utils.formatUnits(balance, decimals),
-          );
-        }
-      }
-    } catch(e) {
-      console.log("Failed to read market LP balances: ", e.message);
+      const balance = await token.balanceOf(account)
+      console.log(
+        `${info.symbol}: ${ethers.utils.formatUnits(balance, info.decimals)}`,
+      )
+    } catch (error) {
+      console.log(`${info.symbol}: unavailable (${error.message})`)
     }
-
-    console.log("");
-
-    await reportSetupStatus({ addressHint: wallet.address });
-    
-  } else {
-    console.log("\n=== UPDOWN Query Tool ===\n");
-    console.log("Usage: node query.js <command>\n");
-    console.log("Available commands:");
-    console.log("  positions    - show positions (default)");
-    console.log("  balance      - show balances");
-    console.log("");
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+async function printPositions(reader, account) {
+  const positions = await reader.getAccountPositions(
+    addresses.celo.DataStore,
+    account,
+    0,
+    50,
+  )
+  const active = positions.filter((position) =>
+    ethers.BigNumber.from(position.numbers.sizeInUsd || 0).gt(0),
+  )
+
+  console.log(`\n=== Positions (${active.length}) ===`)
+  for (const [index, position] of active.entries()) {
+    const market = marketInfo(position.addresses.market)
+    const collateral = tokenInfo(position.addresses.collateralToken)
+    const decimals = collateral ? collateral.decimals : 18
+    console.log(`\n#${index + 1} ${market ? `${market.indexTokenSymbol}/${market.shortTokenSymbol}` : position.addresses.market}`)
+    console.log(`Side: ${position.flags.isLong ? 'long' : 'short'}`)
+    console.log(
+      `Size: ${ethers.utils.formatUnits(position.numbers.sizeInUsd, 30)} USD`,
+    )
+    console.log(
+      `Collateral: ${ethers.utils.formatUnits(
+        position.numbers.collateralAmount,
+        decimals,
+      )} ${collateral ? collateral.symbol : position.addresses.collateralToken}`,
+    )
+  }
+}
+
+async function printOrders(dataStore, account) {
+  const orders = await getAccountOrders(dataStore, account, 0, 50)
+  console.log(`\n=== Pending orders (${orders.length}) ===`)
+  for (const [index, order] of orders.entries()) {
+    const market = marketInfo(order.market)
+    const indexDecimals = market
+      ? findTokenDecimalsByAddress(tokenMeta, market.indexToken) ?? 18
+      : 18
+    const priceDecimals = 30 - indexDecimals
+    console.log(`\n#${index + 1} ${order.key}`)
+    console.log(
+      `Market: ${market ? `${market.indexTokenSymbol}/${market.shortTokenSymbol}` : order.market}`,
+    )
+    console.log(`Type: ${ORDER_TYPES[order.orderType] || order.orderType}`)
+    console.log(`Side: ${order.isLong ? 'long' : 'short'}`)
+    console.log(
+      `Size: ${ethers.utils.formatUnits(order.sizeDeltaUsd, 30)} USD`,
+    )
+    if (!order.triggerPrice.isZero()) {
+      console.log(
+        `Trigger: ${ethers.utils.formatUnits(order.triggerPrice, priceDecimals)}`,
+      )
+    }
+    console.log(`Execution fee: ${ethers.utils.formatEther(order.executionFee)} CELO`)
+    console.log(
+      `Cancel: node scripts/cancel-order.js ${order.key}`,
+    )
+  }
+}
+
+async function main(argv = process.argv.slice(2)) {
+  const command = argv[0] || 'positions'
+  if (!['positions', 'balance', 'orders'].includes(command)) {
+    throw new Error(
+      'Usage: node scripts/query.js <positions|balance|orders>',
+    )
+  }
+  if (!process.env.CELO_RPC_URL || !process.env.CELO_PRIVATE_KEY) {
+    throw new Error('Missing CELO_RPC_URL or CELO_PRIVATE_KEY')
+  }
+
+  const provider = new ethers.providers.JsonRpcProvider(
+    process.env.CELO_RPC_URL,
+    {
+      chainId: Number(process.env.CELO_CHAIN_ID || 42220),
+      name: 'celo',
+    },
+  )
+  const wallet = new ethers.Wallet(process.env.CELO_PRIVATE_KEY, provider)
+  const reader = new ethers.Contract(addresses.celo.Reader, readerAbi, provider)
+  const dataStore = new ethers.Contract(
+    addresses.celo.DataStore,
+    dataStoreAbi,
+    provider,
+  )
+
+  console.log(`Wallet: ${wallet.address}`)
+  if (command === 'positions') {
+    await printPositions(reader, wallet.address)
+    await printBalances(provider, wallet.address)
+  } else if (command === 'balance') {
+    await printBalances(provider, wallet.address)
+  } else {
+    await printOrders(dataStore, wallet.address)
+  }
+
+  await reportSetupStatus({ addressHint: wallet.address })
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`Error: ${error.message}`)
+    process.exitCode = 1
+  })
+}
+
+module.exports = {
+  main,
+  marketInfo,
+  printBalances,
+  printOrders,
+  printPositions,
+  tokenInfo,
+}

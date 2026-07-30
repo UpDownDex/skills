@@ -120,9 +120,10 @@ Additionally, WNT can be transferred in to top up the executionFee (common when 
 - Set `orderType` to `MarketDecrease`
 - Support `closePercent` (1–100) and convert it to `sizeDeltaUsd`
 
-### update / cancel (future script extensions)
+### update / cancel
 
-- `update-order.js`: take `orderKey` and new params, call `updateOrder(...)`
-- `cancel-order.js`: take `orderKey`, call `cancelOrder(orderKey)`
-- For both, it is recommended to call `callStatic` first, then send the real transaction, and print detailed decoded revert reasons
-
+- `update-order.js`: take `orderKey` and a JSON config, preserve omitted fields,
+  and call `updateOrder(...)`.
+- `cancel-order.js`: take `orderKey` and call `cancelOrder(orderKey)`.
+- Both run `callStatic` before sending the real transaction and exit non-zero
+  on failure.

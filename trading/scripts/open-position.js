@@ -4,6 +4,7 @@ const { ethers } = require('ethers')
 const readline = require('readline')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const MAX_UINT256 =
@@ -47,6 +48,11 @@ const tokenMeta = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../assets/celo-tokens.json'), 'utf8'),
 )
 const { reportTrade } = require('./lib/report-trade')
+const {
+  ensureAllowance,
+  findMarket,
+  resolveExecutionFee,
+} = require('./lib/protocol')
 
 function decodeRevertReason(error) {
   const data =
@@ -98,13 +104,7 @@ function readConfig(configPath) {
     const markets = JSON.parse(
       fs.readFileSync(path.join(__dirname, '../assets/markets.json'), 'utf8'),
     )
-    const [indexSymbol, shortSymbol] = cfg.marketSymbol.split('/')
-
-    const matchedMarket = markets.find(
-      (m) =>
-        m.indexTokenSymbol === indexSymbol &&
-        m.shortTokenSymbol === shortSymbol,
-    )
+    const matchedMarket = findMarket(markets, cfg.marketSymbol)
 
     if (matchedMarket) {
       cfg.market = matchedMarket.marketToken
@@ -163,12 +163,6 @@ function keyOfBaseAndParams(baseKey, types, values) {
       [baseKey, ...values],
     ),
   )
-}
-
-function applyFactor(value, factor) {
-  return value
-    .mul(factor)
-    .div(ethers.constants.WeiPerEther.mul('1000000000000'))
 }
 
 function isTrue(value) {
@@ -278,22 +272,12 @@ async function main() {
       console.log('  Matching positions:', targetPositions.length)
 
       if (targetPositions.length === 0) {
-        // No matching position, check collateral amount
         const collateralAmount = parseFloat(
           cfg.initialCollateralDeltaAmountHuman || 0,
         )
         console.log('  Collateral amount:', collateralAmount, collateralSymbol)
-
-        if (collateralAmount < 1.5) {
-          console.log('\n❌ Error: first open requires collateral ≥ 1.5')
-          console.log(
-            `   Current collateral: ${collateralAmount} ${collateralSymbol} (< 1.5)`,
-          )
-          console.log('   Please increase collateral amount and try again.\n')
-          return
-        }
         console.log(
-          `✅ First open position, collateral: ${collateralAmount} ${collateralSymbol} (≥ 1.5)`,
+          'No matching position exists; protocol minimums will be checked on-chain.',
         )
       } else {
         // There is already a matching position
@@ -458,8 +442,15 @@ async function main() {
   }
 
   const sizeDeltaUsd = cfg.sizeDeltaUsd ?? toUnits(cfg.sizeDeltaUsdHuman, 30)
-  const executionFee =
-    cfg.executionFee ?? toUnits(cfg.executionFeeHuman ?? 1.4, 18)
+  const executionFee = await resolveExecutionFee({
+    cfg,
+    dataStore,
+    provider,
+    gasLimitKey: 'INCREASE_ORDER_GAS_LIMIT',
+    swapCount: (cfg.swapPath || []).length,
+    oraclePriceCount: 3 + (cfg.swapPath || []).length,
+    callbackGasLimit: cfg.callbackGasLimit || 0,
+  })
   const initialCollateralDeltaAmount =
     cfg.initialCollateralDeltaAmount ??
     toUnits(cfg.initialCollateralDeltaAmountHuman, collateralDecimals)
@@ -608,37 +599,13 @@ async function main() {
   }
 
   try {
-    const [
-      minPositionSizeUsd,
-      increaseOrderGasLimit,
-      singleSwapGasLimit,
-      baseGasFee,
-      gasFeePerOracle,
-      gasFeeMultiplier,
-    ] = await Promise.all([
-      dataStore.getUint(keyOfString('MIN_POSITION_SIZE_USD')),
-      dataStore.getUint(keyOfString('INCREASE_ORDER_GAS_LIMIT')),
-      dataStore.getUint(keyOfString('SINGLE_SWAP_GAS_LIMIT')),
-      dataStore.getUint(keyOfString('ESTIMATED_GAS_FEE_BASE_AMOUNT_V2_1')),
-      dataStore.getUint(keyOfString('ESTIMATED_GAS_FEE_PER_ORACLE_PRICE')),
-      dataStore.getUint(keyOfString('ESTIMATED_GAS_FEE_MULTIPLIER_FACTOR')),
-    ])
-    const swapCount = (cfg.swapPath || []).length
-    const oraclePriceCount = 3 + swapCount
-    const estimatedGasLimit = increaseOrderGasLimit
-      .add(singleSwapGasLimit.mul(swapCount))
-      .add(cfg.callbackGasLimit || '0')
-    const baseLimit = baseGasFee.add(gasFeePerOracle.mul(oraclePriceCount))
-    const estimatedLimit = baseLimit.add(
-      applyFactor(estimatedGasLimit, gasFeeMultiplier),
+    const minPositionSizeUsd = await dataStore.getUint(
+      keyOfString('MIN_POSITION_SIZE_USD'),
     )
-    const gasPrice = await provider.getGasPrice()
-    const minExecutionFee = estimatedLimit.mul(gasPrice)
     console.log(
       'minPositionSizeUsd:',
       ethers.utils.formatUnits(minPositionSizeUsd, 30),
     )
-    console.log('estimatedMinExecutionFee (wei):', minExecutionFee.toString())
 
     const maxOpenInterestKey = keyOfBaseAndParams(
       keyOfString('MAX_OPEN_INTEREST'),
@@ -658,13 +625,14 @@ async function main() {
     const ok = await promptYesNo(
       'Allowance is insufficient, run approve first? Type yes to continue: ',
     )
-    if (!ok) return
-    const approveTx = await collateralToken.approve(
+    if (!ok) throw new Error('Approval declined; order was not submitted')
+    await ensureAllowance({
+      token: collateralToken,
+      owner: account,
       spender,
-      initialCollateralDeltaAmount,
-    )
-    console.log('approve tx:', approveTx.hash)
-    await approveTx.wait()
+      required: initialCollateralDeltaAmount,
+      approveAmount: initialCollateralDeltaAmount,
+    })
   }
 
   const params = {

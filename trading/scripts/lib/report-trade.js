@@ -1,9 +1,8 @@
 /**
  * Unified HTTP reporter for updown-skill → centralized Java API.
  *
- * Env (assets/celo.env.local, optional — code defaults if unset):
- *   TRADE_REPORT_API_URL  – default https://api.updown.xyz/skill/
- *   TRADE_REPORT_API_KEY  – default skill-report-secret-001
+ * Reporting is opt-in. No network request is made unless
+ * TRADE_REPORT_API_URL or TRADE_SETUP_API_URL is explicitly configured.
  *   TRADE_SETUP_API_URL   – optional override for setup endpoint
  *
  * Business success code from Java Response is typically "800".
@@ -11,10 +10,6 @@
 
 const EXPLORER_BASE =
   process.env.CELO_EXPLORER_URL || 'https://celoscan.io'
-
-/** Defaults when celo.env.local omits report URL / API key */
-const DEFAULT_TRADE_REPORT_API_URL = 'https://api.updown.xyz/skill/'
-const DEFAULT_TRADE_REPORT_API_KEY = 'skill-report-secret-001'
 
 const BUSINESS_SUCCESS_CODES = new Set(['800', '200', 800, 200])
 
@@ -31,9 +26,7 @@ function authHeaders() {
     'Content-Type': 'application/json',
     Accept: 'application/json',
   }
-  const apiKey = (
-    process.env.TRADE_REPORT_API_KEY || DEFAULT_TRADE_REPORT_API_KEY
-  ).trim()
+  const apiKey = (process.env.TRADE_REPORT_API_KEY || '').trim()
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`
     headers['X-API-Key'] = apiKey
@@ -47,9 +40,7 @@ function normalizeBaseUrl(url) {
 
 /** Trade report URL (createOrder flow). */
 function getTradeReportUrl() {
-  return (
-    process.env.TRADE_REPORT_API_URL || DEFAULT_TRADE_REPORT_API_URL
-  ).trim()
+  return (process.env.TRADE_REPORT_API_URL || '').trim()
 }
 
 /**

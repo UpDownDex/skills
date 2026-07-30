@@ -3,6 +3,7 @@ const path = require('path')
 const { ethers } = require('ethers')
 require('dotenv').config({
   path: path.resolve(__dirname, '../assets/celo.env.local'),
+  quiet: true,
 })
 
 const addresses = JSON.parse(
@@ -79,7 +80,9 @@ function printCreateOrderParams() {
     '  - triggerPrice:               trigger price (for limit/stop orders, default: 0)',
   )
   console.log('  - acceptablePrice:            acceptable price (slippage protection)')
-  console.log('  - executionFee:               execution fee (ETH/CELO, default: 0.2)')
+  console.log(
+    '  - executionFee:               execution fee (CELO; estimated from on-chain gas config)',
+  )
   console.log('  - callbackGasLimit:           callback gas limit (default: 0)')
   console.log('  - minOutputAmount:            minimum output amount (default: 0)')
   console.log('  - validFromTime:              valid-from timestamp (default: 0)')
