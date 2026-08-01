@@ -2,7 +2,7 @@ const { ethers } = require('ethers')
 const { findMarket, findTokenEntry } = require('./protocol')
 
 const MAX_UINT256 = ethers.constants.MaxUint256.toString()
-const DEFAULT_MAX_LEVERAGE = 20
+const DEFAULT_MAX_LEVERAGE = 100
 const DEFAULT_MAX_NOTIONAL_USD = 100000
 
 function canonicalSymbol(markets, value) {
