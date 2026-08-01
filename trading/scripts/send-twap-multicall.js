@@ -74,10 +74,80 @@ function readTwapConfigs(twapPattern) {
   console.log(`Found ${twapFiles.length} TWAP order files in orders/:`)
   twapFiles.forEach((f) => console.log(`  - ${f}`))
 
-  return twapFiles.map((f) => {
+  const configs = twapFiles.map((f) => {
     const configPath = path.join(ordersDir, f)
     return JSON.parse(fs.readFileSync(configPath, 'utf8'))
   })
+
+  validateTwapGroup(configs, twapFiles)
+  return configs
+}
+
+/**
+ * uiFeeReceiver carries the TWAP group identity: 0xff, then the part count and
+ * a group id. Parts missing it — or belonging to different groups, which is what
+ * a loose filename pattern silently produces — are created as unrelated limit
+ * orders and later cancelled, after locking collateral and execution fees.
+ */
+function parseTwapUiFeeReceiver(uiFeeReceiver) {
+  if (typeof uiFeeReceiver !== 'string') return null
+  const value = uiFeeReceiver.toLowerCase()
+  if (!/^0xff[0-9a-f]{38}$/.test(value) || !value.endsWith('01')) return null
+  return {
+    parts: parseInt(value.slice(34, 36), 16),
+    groupId: value.slice(36, 40),
+  }
+}
+
+function validateTwapGroup(configs, twapFiles) {
+  const describe = (i) => `${twapFiles[i]}`
+  const missing = configs
+    .map((cfg, i) => (parseTwapUiFeeReceiver(cfg.uiFeeReceiver) ? null : i))
+    .filter((i) => i !== null)
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Not a TWAP group: ${missing
+        .map(describe)
+        .join(', ')} has no valid uiFeeReceiver. ` +
+        'Generate the parts with scripts/trade-assistant.js instead of writing them by hand.',
+    )
+  }
+
+  const groups = new Set(
+    configs.map((cfg) => parseTwapUiFeeReceiver(cfg.uiFeeReceiver).groupId),
+  )
+  if (groups.size > 1) {
+    throw new Error(
+      `Pattern matched ${configs.length} files from ${groups.size} different TWAP groups ` +
+        `(${[...groups].join(', ')}). Narrow the pattern so it selects exactly one group.`,
+    )
+  }
+
+  const declaredParts = parseTwapUiFeeReceiver(configs[0].uiFeeReceiver).parts
+  if (declaredParts !== configs.length) {
+    throw new Error(
+      `TWAP group declares ${declaredParts} parts but the pattern matched ${configs.length} files. ` +
+        'Refusing to send an incomplete or duplicated group.',
+    )
+  }
+
+  const times = configs.map((cfg) => Number(cfg.validFromTime || 0))
+  for (let i = 1; i < times.length; i += 1) {
+    if (!(times[i] > times[i - 1])) {
+      throw new Error(
+        `validFromTime must increase across parts: ${describe(i - 1)} (${
+          times[i - 1]
+        }) → ${describe(i)} (${times[i]}).`,
+      )
+    }
+  }
+
+  console.log(
+    `TWAP group ${[...groups][0]} validated: ${configs.length} parts, interval ${
+      times[1] - times[0]
+    }s`,
+  )
 }
 
 // Query positions (copied from close-position.js)

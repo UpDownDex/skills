@@ -161,18 +161,11 @@ function generateOrderTemplate(orderTypeName) {
       name: 'TWAP Split Increase',
       description:
         'Split a large order into multiple smaller ones; multicall with a single tx hash',
-      template: {
-        market: '0xDbBe49A7165F40C79D00bCD3B456AaE887c3d771',
-        indexToken: '0x57433eD8eC1FAD60b8E1dcFdD1fBD56aBA19C04C',
-        initialCollateralToken: '0xd96a1ac57a180a3819633bCE3dC602Bd8972f595',
-        isLong: true,
-        orderType: 3,
-        sizeDeltaUsdHuman: 100,
-        initialCollateralDeltaAmountHuman: 100,
-        twapInterval: 300,
-        twapParts: 5,
-        swapPath: [],
-      },
+      // No hand-editable template: every part of a TWAP must carry the shared
+      // uiFeeReceiver that encodes part count and group id. A config written by
+      // hand omits it, and the resulting orders are created as unrelated limit
+      // orders that the protocol later cancels.
+      generatorOnly: true,
     },
   }
 
@@ -180,6 +173,22 @@ function generateOrderTemplate(orderTypeName) {
     const t = templates[orderTypeName]
     console.log(`\n=== ${t.name} ===`)
     console.log(`Description: ${t.description}\n`)
+    if (t.generatorOnly) {
+      console.log('TWAP orders cannot be written by hand.')
+      console.log(
+        'Each part must share a uiFeeReceiver that encodes the part count and',
+      )
+      console.log(
+        'group id; without it the parts are created as unrelated limit orders',
+      )
+      console.log('and are cancelled by the protocol.\n')
+      console.log('Generate the parts, then send them:')
+      console.log(
+        '  node scripts/trade-assistant.js "twap open ETH/USDT long 3x with 6 USDT collateral in 2 parts every 15 seconds"',
+      )
+      console.log('  node scripts/send-twap-multicall.js "<pattern>"\n')
+      return null
+    }
     console.log('Template config:')
     console.log(JSON.stringify(t.template, null, 2))
     return t.template
@@ -188,6 +197,9 @@ function generateOrderTemplate(orderTypeName) {
     Object.entries(templates).forEach(([key, t]) => {
       console.log(`${key}:`)
       console.log(`  ${t.description}`)
+      if (t.generatorOnly) {
+        console.log('  ⚠️  generator only — use scripts/trade-assistant.js')
+      }
     })
     return null
   }
